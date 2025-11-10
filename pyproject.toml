@@ -1,0 +1,127 @@
+[project]
+name = "fake-reviews-comparison"
+version = "0.1.0"
+description = "AP9SI project solution"
+authors = [
+  { name = "Peter Vacho", email = "p_vacho@utb.cz" },
+  { name = "Martin Blaho", email = "m_blaho@utb.cz" },
+  { name = "Martin Lehmden", email = "m_lehmden@utb.cz" },
+]
+maintainers = [
+  { name = "Peter Vacho", email = "p_vacho@utb.cz" },
+  { name = "Martin Blaho", email = "m_blaho@utb.cz" },
+  { name = "Martin Lehmden", email = "m_lehmden@utb.cz" },
+]
+readme = "README.md"
+license = "GPL-3.0-or-later"
+classifiers = [
+  "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+  "Natural Language :: English",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.14",
+  "Typing :: Typed",
+]
+requires-python = ">=3.14"
+dependencies = []
+
+[tool.uv]
+default-groups = ["dev"]
+
+[dependency-groups]
+dev = [{ include-group = "lint" }]
+lint = ["basedpyright>=1.31.1", "pre-commit>=4.3.0", "ruff>=0.12.7"]
+
+[tool.basedpyright]
+pythonPlatform = "All"
+pythonVersion = "3.14"
+typeCheckingMode = "all"
+
+# Diagnostic behavior settings
+strictListInference = false
+strictDictionaryInference = false
+strictSetInference = false
+analyzeUnannotatedFunctions = true
+strictParameterNoneValue = true
+enableTypeIgnoreComments = true
+deprecateTypingAliases = true
+enableExperimentalFeatures = false
+disableBytesTypePromotions = true
+
+# Diagnostic rules
+reportAny = false
+reportExplicitAny = false
+reportImplicitStringConcatenation = false
+reportUnreachable = "hint"
+reportUnusedParameter = "hint"
+reportUnannotatedClassAttribute = false
+reportMissingTypeStubs = "hint"
+reportMissingParameterType = false        # ruff's flake8-annotations (ANN) already covers this + gives us more control
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+reportUnknownLambdaType = false
+
+[tool.ruff]
+target-version = "py314"
+line-length = 119
+
+[tool.ruff.lint]
+select = ["ALL"]
+
+ignore = [
+  "C90", # mccabe
+  "FBT", # flake8-boolean-trap
+  "CPY", # flake8-copyright
+  "EM",  # flake8-errmsg
+  "SLF", # flake8-self
+  "ARG", # flake8-unused-arguments
+  "TD",  # flake8-todos
+  "FIX", # flake8-fixme
+
+  "D100", # Missing docstring in public module
+  "D104", # Missing docstring in public package
+  "D105", # Missing docstring in magic method
+  "D107", # Missing docstring in __init__
+  "D203", # Blank line required before class docstring
+  "D213", # Multi-line summary should start at second line (incompatible with D212)
+  "D301", # Use r""" if any backslashes in a docstring
+  "D417", # Missing argument descrition in the docstring
+
+  "ANN002", # Missing type annotation for *args
+  "ANN003", # Missing type annotation for **kwargs
+  "ANN204", # Missing return type annotation for special method
+  "ANN401", # Dynamically typed expressions (typing.Any) disallowed
+
+  "SIM102", # use a single if statement instead of nested if statements
+  "SIM108", # Use ternary operator {contents} instead of if-else-block
+
+  "TC001", # Move application imports used only for annotations into a type-checking block
+  "TC002", # Move 3rd-party imports used only for annotations into a type-checking block
+  "TC003", # Move standard library imports used only for annotations into a type-checking block
+
+  "TD002", # Missing author in TODO
+  "TD003", # Missing issue link on the line following this TODO
+
+  "TRY003",  # No f-strings in raise statements
+  "EM101",   # No string literals in exception init
+  "EM102",   # No f-strings in exception init
+  "UP024",   # Using errors that alias OSError
+  "PLR2004", # Using unnamed numerical constants
+  "PGH003",  # Using specific rule codes in type ignores
+  "E731",    # Don't asign a lambda expression, use a def
+  "A005",    # Module name shadows a stdlib module
+  "T201",    # Print found
+]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"__future__.annotations".msg = "Python 3.14 uses deferred evaluation of annotations, this isn't needed"
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+line-ending = "lf"
