@@ -45,3 +45,6 @@ $RECYCLE.BIN/
 .env
 *.bak
 TODO
+
+# Generated files
+data/final_data.csv

@@ -24,7 +24,17 @@ classifiers = [
   "Typing :: Typed",
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "gensim>=4.4.0",
+    "matplotlib>=3.10.7",
+    "nltk>=3.9.2",
+    "pandas>=2.3.3",
+    "scikit-learn>=1.7.2",
+    "seaborn>=0.13.2",
+    "textblob>=0.19.0",
+    "textstat>=0.7.11",
+    "xgboost>=3.1.2",
+]
 
 [tool.uv]
 default-groups = ["dev"]
