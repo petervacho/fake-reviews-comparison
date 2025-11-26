@@ -213,7 +213,8 @@ def rolling_status(
             spin.text = cur_title + "\n" + indented
         else:
             spin.text = cur_title
-        live.update(spin)
+
+        live.update(spin if not final else spin.text)
 
     stop_event = threading.Event()
     ticker_thread: threading.Thread | None = None
