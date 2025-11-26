@@ -21,9 +21,6 @@ coverage.xml
 # Sphinx documentation
 docs/_build/
 
-# Local python version information (pyenv/rye)
-.python-version
-
 # Editor generated files
 .idea/
 .vscode/
