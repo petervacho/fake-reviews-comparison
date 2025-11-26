@@ -30,6 +30,8 @@ from sklearn.preprocessing import LabelEncoder, MinMaxScaler, StandardScaler
 from sklearn.svm import SVC
 from textblob import TextBlob
 
+from src.utils import rolling_print
+
 DATASET_DIR = Path(__file__).resolve().parent.parent / "data"
 REVIEWS_DATASET_PATH = DATASET_DIR / "fake_reviews_dataset.csv"
 FINAL_DATASET_PATH = DATASET_DIR / "final_data.csv"
@@ -471,15 +473,17 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
         "max_depth": list(range(1, 10)),
         "criterion": ["gini", "entropy"],
     }
-    rf_grid = GridSearchCV(
-        estimator=rf,
-        param_grid=rf_param_grid,
-        cv=2,
-        scoring="accuracy",
-        return_train_score=False,
-        verbose=3,
-    )
-    rf_grid.fit(X_train, y_train)
+
+    with rolling_print(max_lines=10):
+        rf_grid = GridSearchCV(
+            estimator=rf,
+            param_grid=rf_param_grid,
+            cv=2,
+            scoring="accuracy",
+            return_train_score=False,
+            verbose=3,
+        )
+        rf_grid.fit(X_train, y_train)
     print("RandomForest best params:", rf_grid.best_params_)
     print("RandomForest best CV score:", rf_grid.best_score_)
     evaluate_classifier("RandomForest", rf_grid.best_estimator_, X_test, y_test)
@@ -508,8 +512,9 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
         "max_depth": list(range(1, 10)),
         "subsample": [0.8, 0.9, 1.0],
     }
-    xgb_grid = GridSearchCV(xgb_clf, xgb_param_grid, cv=2, n_jobs=-1, verbose=3)
-    xgb_grid.fit(X_train, y_train)
+    with rolling_print(max_lines=10):
+        xgb_grid = GridSearchCV(xgb_clf, xgb_param_grid, cv=2, n_jobs=-1, verbose=3)
+        xgb_grid.fit(X_train, y_train)
     print("XGBoost best params:", xgb_grid.best_params_)
     print("XGBoost best CV score:", xgb_grid.best_score_)
     evaluate_classifier("XGBoost", xgb_grid.best_estimator_, X_test, y_test)
@@ -519,8 +524,9 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
         "C": [0.001, 0.01, 0.1, 1, 10, 100, 1000],
         "kernel": ["rbf", "poly", "sigmoid"],
     }
-    svc_grid = GridSearchCV(SVC(), svc_param_grid, cv=2, scoring="accuracy", verbose=3)
-    svc_grid.fit(X_train, y_train)
+    with rolling_print(max_lines=10):
+        svc_grid = GridSearchCV(SVC(), svc_param_grid, cv=2, scoring="accuracy", verbose=3)
+        svc_grid.fit(X_train, y_train)
     print("SVM best params:", svc_grid.best_params_)
     print("SVM best CV score:", svc_grid.best_score_)
     evaluate_classifier("SVM", svc_grid.best_estimator_, X_test, y_test)
@@ -539,14 +545,15 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
         "penalty": ["l2", "elasticnet"],
         "C": [0.001, 0.01, 0.1, 1, 10, 100],
     }
-    lr_grid = GridSearchCV(
-        LogisticRegression(max_iter=1000),
-        lr_param_grid,
-        scoring="accuracy",
-        return_train_score=False,
-        verbose=1,
-    )
-    lr_grid.fit(X_train, y_train)
+    with rolling_print(max_lines=10):
+        lr_grid = GridSearchCV(
+            LogisticRegression(max_iter=1000),
+            lr_param_grid,
+            scoring="accuracy",
+            return_train_score=False,
+            verbose=3,
+        )
+        lr_grid.fit(X_train, y_train)
     print("LogisticRegression best params:", lr_grid.best_params_)
     print("LogisticRegression best CV score:", lr_grid.best_score_)
     evaluate_classifier("LogisticRegression", lr_grid.best_estimator_, X_test, y_test)
