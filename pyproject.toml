@@ -25,17 +25,17 @@ classifiers = [
 ]
 requires-python = ">=3.13"
 dependencies = [
-    "gensim>=4.4.0",
-    "matplotlib>=3.10.7",
-    "nltk>=3.9.2",
-    "pandas>=2.3.3",
-    "pandas-stubs>=2.3.2.250926",
-    "rich>=14.2.0",
-    "scikit-learn>=1.7.2",
-    "seaborn>=0.13.2",
-    "textblob>=0.19.0",
-    "textstat>=0.7.11",
-    "xgboost>=3.1.2",
+  "gensim>=4.4.0",
+  "matplotlib>=3.10.7",
+  "nltk>=3.9.2",
+  "pandas>=2.3.3",
+  "pandas-stubs>=2.3.2.250926",
+  "rich>=14.2.0",
+  "scikit-learn>=1.7.2",
+  "seaborn>=0.13.2",
+  "textblob>=0.19.0",
+  "textstat>=0.7.11",
+  "xgboost>=3.1.2",
 ]
 
 [tool.uv]
@@ -120,6 +120,8 @@ ignore = [
   "EM102",   # No f-strings in exception init
   "UP024",   # Using errors that alias OSError
   "PLR2004", # Using unnamed numerical constants
+  "PLR0913", # Too many arguments in function definition
+  "PLR0915", # Too many statements
   "PGH003",  # Using specific rule codes in type ignores
   "E731",    # Don't asign a lambda expression, use a def
   "A005",    # Module name shadows a stdlib module
