@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import gensim
 import matplotlib.pyplot as plt
@@ -17,8 +17,8 @@ from sklearn.ensemble import AdaBoostClassifier, RandomForestClassifier
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.manifold import TSNE
-from sklearn.metrics import accuracy_score, classification_report
-from sklearn.metrics import precision_recall_fscore_support as score
+from sklearn.metrics import accuracy_score, classification_report  # pyright: ignore[reportUnknownVariableType]
+from sklearn.metrics import precision_recall_fscore_support as score  # pyright: ignore[reportUnknownVariableType]
 from sklearn.model_selection import GridSearchCV
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler
@@ -49,11 +49,11 @@ def plot_tsne_embeddings(texts: Iterable[str], labels: pd.Series, cleaned: bool 
     labels_subset = labels.iloc[:2000]
 
     bow_vect = CountVectorizer()
-    bow = bow_vect.fit_transform(texts_list)
-    X = bow.toarray()
+    bow = bow_vect.fit_transform(texts_list)  # pyright: ignore[reportUnknownVariableType]
+    x = bow.toarray()  # pyright: ignore[reportUnknownVariableType,reportAttributeAccessIssue]
 
     tsne = TSNE(n_components=2, perplexity=20, random_state=SEED)
-    embedded = tsne.fit_transform(X)
+    embedded = tsne.fit_transform(x)  # pyright: ignore[reportUnknownVariableType]
 
     df = pd.DataFrame(embedded, columns=("dim1", "dim2"))
     df = pd.concat([df, labels_subset.reset_index(drop=True)], axis=1)
@@ -87,12 +87,12 @@ def build_word2vec_embeddings(sentences: Sequence[Sequence[str]]) -> list[np.nda
     sentence_vectors: list[np.ndarray] = []
 
     for sentence in sentences:
-        vec = np.zeros(vector_size, dtype=float)
+        vec: np.ndarray = np.zeros(vector_size, dtype=float)
         count = 0
 
         for word in sentence:
             if word in w2v_model.wv:
-                vec += w2v_model.wv[word]
+                vec = cast("np.ndarray", vec + w2v_model.wv[word])
                 count += 1
 
         if count > 0:
@@ -157,9 +157,9 @@ def prepare_modeling_frame(final_df: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Evaluation
 # ---------------------------------------------------------------------------
-def evaluate_classifier(name: str, model: Any, X_test: pd.DataFrame, y_test: pd.Series) -> None:
+def evaluate_classifier(name: str, model: Any, x_test: np.ndarray | pd.DataFrame, y_test: pd.Series) -> None:
     """Pretty-print evaluation metrics for a classifier."""
-    y_pred = model.predict(X_test)
+    y_pred = model.predict(x_test)
 
     acc = accuracy_score(y_test, y_pred)
     precision, recall, fscore, _ = score(y_test, y_pred, average="micro")
@@ -181,7 +181,7 @@ def evaluate_classifier(name: str, model: Any, X_test: pd.DataFrame, y_test: pd.
     # Rich classification report table
     console.print("\n[bold]Classification report[/bold]")
 
-    report_dict = classification_report(y_test, y_pred, output_dict=True)
+    report_dict = cast("dict[str, Any]", classification_report(y_test, y_pred, output_dict=True))
 
     report_table = Table(show_header=True, header_style="bold")
     report_table.add_column("Class")
@@ -219,10 +219,10 @@ def evaluate_classifier(name: str, model: Any, X_test: pd.DataFrame, y_test: pd.
 # ---------------------------------------------------------------------------
 # Model training
 # ---------------------------------------------------------------------------
-def _print_split_info(X_train: pd.DataFrame, y_train: pd.Series) -> None:
+def _print_split_info(x_train: pd.DataFrame, y_train: pd.Series) -> None:
     """Print basic information about the train split."""
     table = Table(show_header=False, box=None)
-    table.add_row("X_train shape", f"{X_train.shape}")
+    table.add_row("X_train shape", f"{x_train.shape}")
     table.add_row("y_train shape", f"{y_train.shape}")
     table.add_row("Unique labels", f"{sorted(pd.Series(y_train).unique().tolist())}")
     console.print(table)
@@ -230,25 +230,25 @@ def _print_split_info(X_train: pd.DataFrame, y_train: pd.Series) -> None:
 
 def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
     """Train several classical ML models with hyperparameter search."""
-    np.random.seed(SEED)
+    np.random.seed(SEED)  # noqa: NPY002
 
     console.rule("[bold]Train/test split[/bold]")
     train_df = df_with_pca.sample(frac=0.8, random_state=SEED)
     test_df = df_with_pca.drop(train_df.index)
 
-    X_train = train_df.drop(columns=["label"])
+    x_train = train_df.drop(columns=["label"])
     y_train = train_df["label"]
-    X_test = test_df.drop(columns=["label"])
+    x_test = test_df.drop(columns=["label"])
     y_test = test_df["label"]
 
-    _print_split_info(X_train, y_train)
+    _print_split_info(x_train, y_train)
 
     # ------------------------------------------------------------------
     # Random Forest
     # ------------------------------------------------------------------
     console.rule("[bold]RandomForest[/bold]")
     rf = RandomForestClassifier(random_state=SEED)
-    rf_param_grid = {
+    rf_param_grid: dict[str, Any] = {
         "n_estimators": [100, 250],
         "max_features": ["sqrt", "log2"],
         "max_depth": list(range(1, 10)),
@@ -274,7 +274,7 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
     stopped = False
     with rolling_status("Fitting RandomForest GridSearchCV", max_lines=10, clear_on_exit=True, add_elapsed_time=True):
         try:
-            _ = rf_grid.fit(X_train, y_train)
+            _ = rf_grid.fit(x_train, y_train)
         except KeyboardInterrupt:
             stopped = True
     if stopped:
@@ -282,14 +282,14 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
     else:
         console.print(f"Best CV score: [bold]{rf_grid.best_score_:.4f}[/bold]")
         console.print(f"Best params: {rf_grid.best_params_}")
-        evaluate_classifier("RandomForest", rf_grid.best_estimator_, X_test, y_test)
+        evaluate_classifier("RandomForest", rf_grid.best_estimator_, x_test, y_test)
 
     # ------------------------------------------------------------------
     # AdaBoost
     # ------------------------------------------------------------------
     console.rule("[bold]AdaBoost[/bold]")
     ada = AdaBoostClassifier(random_state=SEED)
-    ada_param_grid = {
+    ada_param_grid: dict[str, Any] = {
         "n_estimators": [50, 100, 200],
         "learning_rate": [0.1, 0.5, 1.0],
     }
@@ -307,7 +307,7 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
     stopped = False
     with rolling_status("Fitting AdaBoost GridSearchCV", max_lines=10, add_elapsed_time=True):
         try:
-            _ = ada_grid.fit(X_train, y_train)
+            _ = ada_grid.fit(x_train, y_train)
         except KeyboardInterrupt:
             stopped = True
     if stopped:
@@ -315,7 +315,7 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
     else:
         console.print(f"Best CV score: [bold]{ada_grid.best_score_:.4f}[/bold]")
         console.print(f"Best params: {ada_grid.best_params_}")
-        evaluate_classifier("AdaBoost", ada_grid.best_estimator_, X_test, y_test)
+        evaluate_classifier("AdaBoost", ada_grid.best_estimator_, x_test, y_test)
 
     # ------------------------------------------------------------------
     # XGBoost
@@ -326,7 +326,7 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
         eval_metric="mlogloss",
         random_state=SEED,
     )
-    xgb_param_grid = {
+    xgb_param_grid: dict[str, Any] = {
         "n_estimators": [50, 100, 200],
         "learning_rate": [0.1, 0.01, 0.001],
         "max_depth": list(range(1, 10)),
@@ -351,7 +351,7 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
     stopped = False
     with rolling_status("Fitting XGBoost GridSearchCV", max_lines=10, add_elapsed_time=True):
         try:
-            _ = xgb_grid.fit(X_train, y_train)
+            _ = xgb_grid.fit(x_train, y_train)
         except KeyboardInterrupt:
             stopped = True
     if stopped:
@@ -359,13 +359,13 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
     else:
         console.print(f"Best CV score: [bold]{xgb_grid.best_score_:.4f}[/bold]")
         console.print(f"Best params: {xgb_grid.best_params_}")
-        evaluate_classifier("XGBoost", xgb_grid.best_estimator_, X_test, y_test)
+        evaluate_classifier("XGBoost", xgb_grid.best_estimator_, x_test, y_test)
 
     # ------------------------------------------------------------------
     # SVM
     # ------------------------------------------------------------------
     console.rule("[bold]SVM[/bold]")
-    svc_param_grid = {
+    svc_param_grid: dict[str, Any] = {
         "C": [0.001, 0.01, 0.1, 1, 10, 100, 1000],
         "kernel": ["rbf", "poly", "sigmoid"],
     }
@@ -384,7 +384,7 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
     stopped = False
     with rolling_status("Fitting SVM GridSearchCV", max_lines=10, add_elapsed_time=True):
         try:
-            _ = svc_grid.fit(X_train, y_train)
+            _ = svc_grid.fit(x_train, y_train)
         except KeyboardInterrupt:
             stopped = True
     if stopped:
@@ -392,27 +392,29 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
     else:
         console.print(f"Best CV score: [bold]{svc_grid.best_score_:.4f}[/bold]")
         console.print(f"Best params: {svc_grid.best_params_}")
-        evaluate_classifier("SVM", svc_grid.best_estimator_, X_test, y_test)
+        evaluate_classifier("SVM", svc_grid.best_estimator_, x_test, y_test)
 
     # ------------------------------------------------------------------
     # Multinomial Naive Bayes
     # ------------------------------------------------------------------
     console.rule("[bold]Multinomial Naive Bayes[/bold]")
     console.print("Scaling features to [0, 1] range for MultinomialNB")
-
     scaler = MinMaxScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+    x_train_scaled = cast("np.ndarray", scaler.fit_transform(x_train))
+    x_test_scaled = cast("np.ndarray", scaler.transform(x_test))
 
     nb_model = MultinomialNB(alpha=0.1)
-    nb_model.fit(X_train_scaled, y_train)
-    evaluate_classifier("MultinomialNB", nb_model, X_test_scaled, y_test)
+
+    with console.status("Fitting MultinominalNB"):
+        _ = nb_model.fit(x_train_scaled, y_train)
+
+    evaluate_classifier("MultinomialNB", nb_model, x_test_scaled, y_test)
 
     # ------------------------------------------------------------------
     # Logistic Regression
     # ------------------------------------------------------------------
     console.rule("[bold]Logistic Regression[/bold]")
-    lr_param_grid = {
+    lr_param_grid: dict[str, Any] = {
         "penalty": ["l2"],
         "C": [0.001, 0.01, 0.1, 1, 10, 100],
     }
@@ -430,7 +432,7 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
     stopped = False
     with rolling_status("Fitting LogisticRegression GridSearchCV", max_lines=10, add_elapsed_time=True):
         try:
-            _ = lr_grid.fit(X_train, y_train)
+            _ = lr_grid.fit(x_train, y_train)
         except KeyboardInterrupt:
             stopped = True
     if stopped:
@@ -438,7 +440,7 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
     else:
         console.print(f"Best CV score: [bold]{lr_grid.best_score_:.4f}[/bold]")
         console.print(f"Best params: {lr_grid.best_params_}")
-        evaluate_classifier("LogisticRegression", lr_grid.best_estimator_, X_test, y_test)
+        evaluate_classifier("LogisticRegression", lr_grid.best_estimator_, x_test, y_test)
 
 
 # ---------------------------------------------------------------------------

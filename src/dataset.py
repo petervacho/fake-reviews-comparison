@@ -114,7 +114,7 @@ def categorize_sentiment(text: str) -> str:
     Returns:
         Sentiment label: 'Positive', 'Neutral' or 'Negative'.
     """
-    polarity = TextBlob(str(text)).sentiment.polarity
+    polarity = TextBlob(str(text)).sentiment.polarity  # pyright: ignore[reportUnknownVariableType,reportAttributeAccessIssue]
     if polarity > 0:
         return "Positive"
     if polarity == 0:
@@ -176,8 +176,8 @@ def part_of_speech_count(text: str) -> Counter[str]:
         Counter mapping POS tag to occurrence count.
     """
     tokens = nltk.word_tokenize(text)
-    tags = nltk.pos_tag(tokens)
-    return Counter(tag for _, tag in tags)
+    tags = nltk.pos_tag(tokens)  # pyright: ignore[reportUnknownVariableType]
+    return Counter(tag for _, tag in tags)  # pyright: ignore[reportUnknownVariableType]
 
 
 def readability_metrics(text: str) -> dict[str, float]:
@@ -190,13 +190,13 @@ def readability_metrics(text: str) -> dict[str, float]:
         Dictionary of readability scores.
     """
     return {
-        "flesch_reading_ease": float(textstat.flesch_reading_ease(text)),
-        "flesch_kincaid_grade": float(textstat.flesch_kincaid_grade(text)),
-        "gunning_fog": float(textstat.gunning_fog(text)),
-        "smog_index": float(textstat.smog_index(text)),
-        "automated_readability_index": float(textstat.automated_readability_index(text)),
-        "coleman_liau_index": float(textstat.coleman_liau_index(text)),
-        "dale_chall_readability_score": float(textstat.dale_chall_readability_score(text)),
+        "flesch_reading_ease": float(textstat.flesch_reading_ease(text)),  # pyright: ignore[reportAttributeAccessIssue]
+        "flesch_kincaid_grade": float(textstat.flesch_kincaid_grade(text)),  # pyright: ignore[reportAttributeAccessIssue]
+        "gunning_fog": float(textstat.gunning_fog(text)),  # pyright: ignore[reportAttributeAccessIssue]
+        "smog_index": float(textstat.smog_index(text)),  # pyright: ignore[reportAttributeAccessIssue]
+        "automated_readability_index": float(textstat.automated_readability_index(text)),  # pyright: ignore[reportAttributeAccessIssue]
+        "coleman_liau_index": float(textstat.coleman_liau_index(text)),  # pyright: ignore[reportAttributeAccessIssue]
+        "dale_chall_readability_score": float(textstat.dale_chall_readability_score(text)),  # pyright: ignore[reportAttributeAccessIssue]
     }
 
 
@@ -232,7 +232,7 @@ def preprocess_reviews(raw_df: pd.DataFrame) -> pd.DataFrame:
         with console.status("Removing noise and stop words"):
             df["cleaned_text"] = df["stemmed_text"].apply(remove_noise)
             df["CleanedText"] = df["cleaned_text"].apply(
-                lambda t: " ".join(w for w in t.split() if w not in stop_words),
+                lambda t: " ".join(w for w in t.split() if w not in stop_words),  # pyright: ignore[reportUnknownVariableType]
             )
 
         with console.status("Computing sentiment and semantic relevance"):
@@ -285,13 +285,13 @@ def perform_pca(df: pd.DataFrame, n_components: int = 40, with_plot: bool = True
 
     with console.status("[PCA] Scaling numeric features"):
         scaler = StandardScaler()
-        scaled_features = scaler.fit_transform(numeric_features)
+        scaled_features = scaler.fit_transform(numeric_features)  # pyright: ignore[reportUnknownVariableType]
 
     # Full PCA to inspect variance
     with console.status("[PCA] Running full PCA to compute explained variance"):
         full_pca = PCA()
-        full_pca.fit(scaled_features)
-        cumulative_variance_ratio = np.cumsum(full_pca.explained_variance_ratio_)
+        _ = full_pca.fit(scaled_features)
+        cumulative_variance_ratio = np.cumsum(full_pca.explained_variance_ratio_)  # pyright: ignore[reportUnknownVariableType]
 
     if with_plot:
         with console.status("Showing explained variance plot (close the window to continue)"):
@@ -306,7 +306,7 @@ def perform_pca(df: pd.DataFrame, n_components: int = 40, with_plot: bool = True
     # PCA with fixed dimensionality for downstream modeling
     with console.status(f"[PCA] Computing PCA with {n_components} components"):
         pca = PCA(n_components=n_components)
-        principal_components = pca.fit_transform(scaled_features)
+        principal_components = pca.fit_transform(scaled_features)  # pyright: ignore[reportUnknownVariableType]
 
     column_names = [f"PC{i + 1}" for i in range(n_components)]
     pca_df = pd.DataFrame(data=principal_components, columns=column_names, index=df.index)
