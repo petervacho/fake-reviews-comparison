@@ -58,10 +58,11 @@ def plot_tsne_embeddings(texts: Iterable[str], labels: pd.Series, cleaned: bool 
     df = pd.DataFrame(embedded, columns=("dim1", "dim2"))
     df = pd.concat([df, labels_subset.reset_index(drop=True)], axis=1)
 
-    sns.FacetGrid(df, hue="label", height=6).map(plt.scatter, "dim1", "dim2").add_legend()
-    title_suffix = "Cleaned" if cleaned else "Raw"
-    plt.title(f"t-SNE on {title_suffix} Texts (Perplexity = 20)")
-    plt.show()
+    with console.status("Showing t-SNE plot (close window to continue"):
+        _ = sns.FacetGrid(df, hue="label", height=6).map(plt.scatter, "dim1", "dim2").add_legend()
+        title_suffix = "Cleaned" if cleaned else "Raw"
+        _ = plt.title(f"t-SNE on {title_suffix} Texts (Perplexity = 20)")
+        plt.show()
 
 
 def build_word2vec_embeddings(sentences: Sequence[Sequence[str]]) -> list[np.ndarray]:
