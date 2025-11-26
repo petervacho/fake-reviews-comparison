@@ -20,10 +20,10 @@ classifiers = [
   "Operating System :: OS Independent",
   "Programming Language :: Python",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.13",
   "Typing :: Typed",
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 dependencies = []
 
 [tool.uv]
@@ -35,7 +35,7 @@ lint = ["basedpyright>=1.31.1", "pre-commit>=4.3.0", "ruff>=0.12.7"]
 
 [tool.basedpyright]
 pythonPlatform = "All"
-pythonVersion = "3.14"
+pythonVersion = "3.13"
 typeCheckingMode = "all"
 
 # Diagnostic behavior settings
@@ -63,7 +63,7 @@ reportUnknownArgumentType = false
 reportUnknownLambdaType = false
 
 [tool.ruff]
-target-version = "py314"
+target-version = "py313"
 line-length = 119
 
 [tool.ruff.lint]
@@ -114,8 +114,8 @@ ignore = [
   "T201",    # Print found
 ]
 
-[tool.ruff.lint.flake8-tidy-imports.banned-api]
-"__future__.annotations".msg = "Python 3.14 uses deferred evaluation of annotations, this isn't needed"
+[tool.ruff.lint.isort]
+required-imports = ["from __future__ import annotations"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"

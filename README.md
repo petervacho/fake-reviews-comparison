@@ -5,7 +5,7 @@ fake reviews using ML**
 
 ## Installation & Running
 
-This project uses [python] 3.14 or later.
+This project uses [python] 3.13 or later.
 
 The recommended way to run the script is to install the dependencies into a virtual environment. To set up this environment, you should run:
 
