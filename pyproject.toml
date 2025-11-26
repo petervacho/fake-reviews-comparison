@@ -123,6 +123,7 @@ ignore = [
   "PLR0913", # Too many arguments in function definition
   "PLR0915", # Too many statements
   "PLR0912", # Too many branches
+  "PLW2901", # For loop variable overwritten
   "PGH003",  # Using specific rule codes in type ignores
   "E731",    # Don't asign a lambda expression, use a def
   "A005",    # Module name shadows a stdlib module
