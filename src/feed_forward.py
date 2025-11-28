@@ -240,23 +240,33 @@ def train_feed_forward(
     criterion = nn.BCELoss()
 
     # Training loop (keeps the same iteration count and loss computation)
+    # Training loop (keeps the same iteration count and loss computation)
+    stopped = False
     with rolling_status(
         "Training feed-forward neural network",
         max_lines=10,
         clear_on_exit=True,
         add_elapsed_time=True,
     ):
-        for itr in range(1, num_iterations + 1):
-            optimizer.zero_grad()
+        try:
+            for itr in range(1, num_iterations + 1):
+                optimizer.zero_grad()
 
-            outputs = model(x_train_tensor)
-            loss = criterion(outputs.squeeze(), y_train_tensor.float())
+                outputs = model(x_train_tensor)
+                loss = criterion(outputs.squeeze(), y_train_tensor.float())
 
-            loss.backward()
-            _ = optimizer.step()  # pyright: ignore[reportUnknownVariableType]
+                loss.backward()
+                _ = optimizer.step()  # pyright: ignore[reportUnknownVariableType]
 
-            # Preserve the original logging semantics (shape and loss per iteration)
-            print(f"Iter {itr}: output_shape={tuple(outputs.shape)} loss={loss.item():.6f}")
+                # Preserve the original logging semantics
+                print(f"Iter {itr}/{num_iterations}: output_shape={tuple(outputs.shape)} loss={loss.item():.6f}")
+
+        except KeyboardInterrupt:
+            stopped = True
+
+    if stopped:
+        console.print("[red]Training interrupted by user, skipping evaluation[/red]")
+        return
 
     # Evaluation (original script evaluated on train; here we do both)
     _evaluate_split("train", model, x_train_tensor, y_train_tensor)
