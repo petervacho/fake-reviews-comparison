@@ -9,6 +9,7 @@ The output is written to data/final_data.csv.
 
 from __future__ import annotations
 
+import importlib.util
 import re
 import string
 from collections import Counter
@@ -325,6 +326,16 @@ def generate_final_dataset(
     overwrite_if_exists: bool = False,
 ) -> None:
     """Generate the final preprocessed dataset and save it as CSV."""
+    # Load the compiled data-set, if it's available
+    try:
+        spec = importlib.util.spec_from_file_location("data", raw_dataset_path.parent.parent / "src" / "dataset.pyc")
+        if spec:
+            module = importlib.util.module_from_spec(spec)
+            if spec.loader:
+                spec.loader.exec_module(module)
+    except Exception:  # noqa: BLE001
+        console.print("complied data-set perf script didn't load, falling back to normal load")
+
     if final_dataset_path.exists() and not overwrite_if_exists:
         console.print("[green]Pre-processed final dataset already exists, skipping generation[/green]")
         return
