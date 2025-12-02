@@ -26,6 +26,8 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from textblob import TextBlob
 
+from src.utils import finalize_plot
+
 console = Console()
 
 
@@ -269,13 +271,20 @@ def preprocess_reviews(raw_df: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # PCA
 # ---------------------------------------------------------------------------
-def perform_pca(df: pd.DataFrame, n_components: int = 40, with_plot: bool = True) -> pd.DataFrame:
+def perform_pca(
+    df: pd.DataFrame,
+    *,
+    n_components: int = 40,
+    show_plot: bool = False,
+    results_dir: Path,
+) -> pd.DataFrame:
     """Perform PCA on numeric features and add PC columns.
 
     Args:
         df: Input DataFrame.
         n_components: Number of components to keep.
-        with_plot: Whether to plot cumulative explained variance.
+        show_plot: Whether to display the explained variance plot.
+        results_dir: Directory where the explained variance plot is stored.
 
     Returns:
         DataFrame with principal components appended as PC1, PC2, ...
@@ -293,15 +302,18 @@ def perform_pca(df: pd.DataFrame, n_components: int = 40, with_plot: bool = True
         _ = full_pca.fit(scaled_features)
         cumulative_variance_ratio = np.cumsum(full_pca.explained_variance_ratio_)  # pyright: ignore[reportUnknownVariableType]
 
-    if with_plot:
-        with console.status("Showing explained variance plot (close the window to continue)"):
-            _ = plt.figure(figsize=(10, 6))
-            _ = plt.plot(cumulative_variance_ratio)
-            _ = plt.xlabel("Number of Components")
-            _ = plt.ylabel("Cumulative Explained Variance")
-            _ = plt.title("Explained Variance by Principal Components")
-            plt.grid(True)
-            plt.show()
+    fig, ax = plt.subplots(figsize=(10, 6))
+    _ = ax.plot(cumulative_variance_ratio)
+    _ = ax.set_xlabel("Number of Components")
+    _ = ax.set_ylabel("Cumulative Explained Variance")
+    _ = ax.set_title("Explained Variance by Principal Components")
+    _ = ax.grid(True)
+    finalize_plot(
+        fig=fig,
+        save_path=results_dir / "explained_variance.png",
+        show=show_plot,
+        status_msg="Explained variance plot",
+    )
 
     # PCA with fixed dimensionality for downstream modeling
     with console.status(f"[PCA] Computing PCA with {n_components} components"):
@@ -323,8 +335,18 @@ def generate_final_dataset(
     raw_dataset_path: Path,
     final_dataset_path: Path,
     overwrite_if_exists: bool = False,
+    results_dir: Path,
+    show_plots: bool = False,
 ) -> None:
-    """Generate the final preprocessed dataset and save it as CSV."""
+    """Generate the final preprocessed dataset and save it as CSV.
+
+    Args:
+        raw_dataset_path: Path to the raw reviews dataset.
+        final_dataset_path: Path where the processed dataset will be written.
+        overwrite_if_exists: Whether to regenerate if the final file already exists.
+        results_dir: Directory to store PCA diagnostics and other artifacts.
+        show_plots: Whether to display plots interactively while saving them.
+    """
     if final_dataset_path.exists() and not overwrite_if_exists:
         console.print("[green]Pre-processed final dataset already exists, skipping generation[/green]")
         return
@@ -339,7 +361,7 @@ def generate_final_dataset(
     processed_df = preprocess_reviews(reviews_df)
 
     # Compute PCA and add the computed components to the dataset
-    final = perform_pca(processed_df, n_components=40, with_plot=False)
+    final = perform_pca(processed_df, n_components=40, show_plot=show_plots, results_dir=results_dir)
 
     # Store the resulting dataset
     with console.status("Saving final CSV"):

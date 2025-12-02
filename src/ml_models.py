@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import sklearn.metrics as sk_metrics
 import xgboost as xgb
 from rich.console import Console
 from rich.panel import Panel
@@ -22,7 +23,13 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler
 from sklearn.svm import SVC
 
-from src.utils import render_evaluation_report, rolling_status
+from src.utils import finalize_plot, render_evaluation_report, rolling_status
+
+accuracy_score = cast("Any", sk_metrics.accuracy_score)
+auc = cast("Any", sk_metrics.auc)
+precision_recall_curve = cast("Any", sk_metrics.precision_recall_curve)
+roc_curve = cast("Any", sk_metrics.roc_curve)
+score = cast("Any", sk_metrics.precision_recall_fscore_support)
 
 SEED = 0
 
@@ -32,13 +39,22 @@ console = Console()
 # ---------------------------------------------------------------------------
 # Visualization / Embeddings
 # ---------------------------------------------------------------------------
-def plot_tsne_embeddings(texts: Iterable[str], labels: pd.Series, cleaned: bool = True) -> None:
+def plot_tsne_embeddings(
+    *,
+    texts: Iterable[str],
+    labels: pd.Series,
+    cleaned: bool = True,
+    save_path: Path,
+    show_plot: bool = False,
+) -> None:
     """Compute and plot t-SNE embeddings for a subset of texts.
 
     Args:
         texts: Iterable of text documents.
         labels: Corresponding labels.
         cleaned: Whether the texts are cleaned; used only for plot title.
+        save_path: Destination where the plot will be written.
+        show_plot: Whether to display the plot interactively as well.
     """
     console.rule("[bold]t-SNE embedding[/bold]")
     console.print("Sampling up to 2000 texts for t-SNE projection")
@@ -56,11 +72,16 @@ def plot_tsne_embeddings(texts: Iterable[str], labels: pd.Series, cleaned: bool 
     df = pd.DataFrame(embedded, columns=("dim1", "dim2"))
     df = pd.concat([df, labels_subset.reset_index(drop=True)], axis=1)
 
-    with console.status("Showing t-SNE plot (close window to continue"):
-        _ = sns.FacetGrid(df, hue="label", height=6).map(plt.scatter, "dim1", "dim2").add_legend()
+    with console.status("Rendering t-SNE plot"):
+        grid = sns.FacetGrid(df, hue="label", height=6).map(plt.scatter, "dim1", "dim2").add_legend()
         title_suffix = "Cleaned" if cleaned else "Raw"
         _ = plt.title(f"t-SNE on {title_suffix} Texts (Perplexity = 20)")
-        plt.show()
+        finalize_plot(
+            fig=grid.figure,
+            save_path=save_path,
+            show=show_plot,
+            status_msg="Showing t-SNE plot",
+        )
 
 
 def build_word2vec_embeddings(sentences: Sequence[Sequence[str]]) -> list[np.ndarray]:
@@ -155,16 +176,148 @@ def prepare_modeling_frame(final_df: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Evaluation
 # ---------------------------------------------------------------------------
-def evaluate_classifier(name: str, model: Any, x_test: np.ndarray | pd.DataFrame, y_test: pd.Series) -> None:
-    """Pretty-print evaluation metrics for a classifier."""
+def _get_binary_scores(model: Any, x: np.ndarray | pd.DataFrame) -> np.ndarray | None:
+    """Return probability/decision scores for binary metrics, if available."""
+    if hasattr(model, "predict_proba"):
+        proba = cast("np.ndarray", model.predict_proba(x))
+        if proba.shape[1] >= 2:
+            return proba[:, 1]
+    if hasattr(model, "decision_function"):
+        return cast("np.ndarray", model.decision_function(x))
+    return None
+
+
+def _plot_roc_pr_curves(
+    name: str,
+    y_true: pd.Series,
+    y_scores: np.ndarray | None,
+    results_dir: Path | None,
+    show_plots: bool,
+) -> None:
+    if y_scores is None or results_dir is None:
+        return
+
+    results_dir.mkdir(parents=True, exist_ok=True)
+    y_true_arr = np.asarray(y_true)
+    if len(np.unique(y_true_arr)) > 2:
+        return
+
+    fpr, tpr, _ = roc_curve(y_true_arr, y_scores)
+    roc_auc = auc(fpr, tpr)
+    fig, ax = plt.subplots(figsize=(6, 5))
+    _ = ax.plot(fpr, tpr, label=f"AUC = {roc_auc:.3f}")
+    _ = ax.plot([0, 1], [0, 1], linestyle="--", color="gray")
+    _ = ax.set_xlabel("False Positive Rate")
+    _ = ax.set_ylabel("True Positive Rate")
+    _ = ax.set_title(f"{name} ROC curve")
+    _ = ax.legend()
+    finalize_plot(
+        fig=fig,
+        save_path=results_dir / f"{name.lower()}_roc.png",
+        show=show_plots,
+        status_msg=f"Showing ROC for {name}",
+    )
+
+    precision, recall, _thresholds = cast(
+        "tuple[np.ndarray, np.ndarray, Any]",
+        precision_recall_curve(y_true_arr, y_scores),
+    )
+    fig_pr, ax_pr = plt.subplots(figsize=(6, 5))
+    _ = ax_pr.plot(recall, precision)
+    _ = ax_pr.set_xlabel("Recall")
+    _ = ax_pr.set_ylabel("Precision")
+    _ = ax_pr.set_title(f"{name} Precision-Recall curve")
+    finalize_plot(
+        fig=fig_pr,
+        save_path=results_dir / f"{name.lower()}_pr_curve.png",
+        show=show_plots,
+        status_msg=f"Showing PR curve for {name}",
+    )
+
+
+def _plot_feature_importances(
+    name: str,
+    model: Any,
+    feature_names: list[str],
+    results_dir: Path,
+    show_plots: bool,
+) -> None:
+    results_dir.mkdir(parents=True, exist_ok=True)
+    values: np.ndarray | None = None
+    if hasattr(model, "feature_importances_"):
+        values = cast("np.ndarray", model.feature_importances_)
+    elif hasattr(model, "coef_"):
+        coef = cast("np.ndarray", model.coef_)
+        values = np.abs(coef).mean(axis=0)
+
+    if values is None:
+        return
+
+    sorted_idx = np.argsort(values)[::-1][: min(20, len(values))]
+    fig, ax = plt.subplots(figsize=(8, 6))
+    _ = ax.barh(range(len(sorted_idx)), values[sorted_idx][::-1])
+    _ = ax.set_yticks(range(len(sorted_idx)))
+    _ = ax.set_yticklabels([feature_names[i] for i in sorted_idx][::-1])
+    _ = ax.set_xlabel("Importance")
+    _ = ax.set_title(f"{name} feature importances")
+    fig.tight_layout()
+    finalize_plot(
+        fig=fig,
+        save_path=results_dir / f"{name.lower()}_feature_importances.png",
+        show=show_plots,
+        status_msg=f"Showing feature importances for {name}",
+    )
+
+
+def evaluate_classifier(
+    name: str,
+    model: Any,
+    x_test: np.ndarray | pd.DataFrame,
+    y_test: pd.Series,
+    results_dir: Path,
+    feature_names: list[str] | None = None,
+    show_plots: bool = False,
+) -> dict[str, float]:
+    """Pretty-print evaluation metrics for a classifier, save plots, and return scores.
+
+    Args:
+        name: Human-readable model name for report titles and filenames.
+        model: Fitted classifier to evaluate.
+        x_test: Test feature matrix.
+        y_test: True labels for the test set.
+        results_dir: Directory where evaluation artifacts are stored.
+        feature_names: Optional list of feature names for importance plots.
+        show_plots: Whether to display the plots interactively.
+
+    Returns:
+        Dictionary with accuracy, precision, recall, and F1 scores.
+    """
     y_pred = model.predict(x_test)
+
+    acc = accuracy_score(y_test, y_pred)
+    precision, recall, fscore, _ = score(y_test, y_pred, average="micro")
 
     render_evaluation_report(
         name=name,
         y_true=y_test,
         y_pred=y_pred,
         console=console,
+        results_dir=results_dir,
+        show_plots=show_plots,
     )
+
+    scores = _get_binary_scores(model, x_test)
+    _plot_roc_pr_curves(name, y_test, scores, results_dir, show_plots)
+
+    if feature_names is not None:
+        _plot_feature_importances(name, model, feature_names, results_dir, show_plots)
+
+    return {
+        "accuracy": float(acc),
+        "precision": float(precision),
+        "recall": float(recall),
+        "f1": float(fscore),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -179,8 +332,18 @@ def _print_split_info(x_train: pd.DataFrame, y_train: pd.Series) -> None:
     console.print(table)
 
 
-def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
-    """Train several classical ML models with hyperparameter search."""
+def train_and_evaluate_models(
+    df_with_pca: pd.DataFrame,
+    results_dir: Path,
+    show_plots: bool = False,
+) -> None:
+    """Train several classical ML models with hyperparameter search and log results.
+
+    Args:
+        df_with_pca: Modeling dataframe containing PCA features and a ``label`` column.
+        results_dir: Base directory for saving per-model plots and reports.
+        show_plots: Whether to display generated plots interactively.
+    """
     np.random.seed(SEED)  # noqa: NPY002
 
     console.rule("[bold]Train/test split[/bold]")
@@ -191,6 +354,7 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
     y_train = train_df["label"]
     x_test = test_df.drop(columns=["label"])
     y_test = test_df["label"]
+    feature_names = x_train.columns.tolist()
 
     _print_split_info(x_train, y_train)
 
@@ -233,7 +397,16 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
     else:
         console.print(f"Best CV score: [bold]{rf_grid.best_score_:.4f}[/bold]")
         console.print(f"Best params: {rf_grid.best_params_}")
-        evaluate_classifier("RandomForest", rf_grid.best_estimator_, x_test, y_test)
+        model_results_dir = results_dir / "random_forest"
+        _ = evaluate_classifier(
+            "RandomForest",
+            rf_grid.best_estimator_,
+            x_test,
+            y_test,
+            model_results_dir,
+            feature_names,
+            show_plots=show_plots,
+        )
 
     # ------------------------------------------------------------------
     # AdaBoost
@@ -266,7 +439,16 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
     else:
         console.print(f"Best CV score: [bold]{ada_grid.best_score_:.4f}[/bold]")
         console.print(f"Best params: {ada_grid.best_params_}")
-        evaluate_classifier("AdaBoost", ada_grid.best_estimator_, x_test, y_test)
+        model_results_dir = results_dir / "adaboost"
+        _ = evaluate_classifier(
+            "AdaBoost",
+            ada_grid.best_estimator_,
+            x_test,
+            y_test,
+            model_results_dir,
+            feature_names,
+            show_plots=show_plots,
+        )
 
     # ------------------------------------------------------------------
     # XGBoost
@@ -310,7 +492,16 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
     else:
         console.print(f"Best CV score: [bold]{xgb_grid.best_score_:.4f}[/bold]")
         console.print(f"Best params: {xgb_grid.best_params_}")
-        evaluate_classifier("XGBoost", xgb_grid.best_estimator_, x_test, y_test)
+        model_results_dir = results_dir / "xgboost"
+        _ = evaluate_classifier(
+            "XGBoost",
+            xgb_grid.best_estimator_,
+            x_test,
+            y_test,
+            model_results_dir,
+            feature_names,
+            show_plots=show_plots,
+        )
 
     # ------------------------------------------------------------------
     # SVM
@@ -343,7 +534,16 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
     else:
         console.print(f"Best CV score: [bold]{svc_grid.best_score_:.4f}[/bold]")
         console.print(f"Best params: {svc_grid.best_params_}")
-        evaluate_classifier("SVM", svc_grid.best_estimator_, x_test, y_test)
+        model_results_dir = results_dir / "svm"
+        _ = evaluate_classifier(
+            "SVM",
+            svc_grid.best_estimator_,
+            x_test,
+            y_test,
+            model_results_dir,
+            feature_names,
+            show_plots=show_plots,
+        )
 
     # ------------------------------------------------------------------
     # Multinomial Naive Bayes
@@ -359,7 +559,16 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
     with console.status("Fitting MultinominalNB"):
         _ = nb_model.fit(x_train_scaled, y_train)
 
-    evaluate_classifier("MultinomialNB", nb_model, x_test_scaled, y_test)
+    nb_results_dir = results_dir / "multinomial_nb"
+    _ = evaluate_classifier(
+        "MultinomialNB",
+        nb_model,
+        x_test_scaled,
+        y_test,
+        nb_results_dir,
+        feature_names,
+        show_plots=show_plots,
+    )
 
     # ------------------------------------------------------------------
     # Logistic Regression
@@ -391,23 +600,49 @@ def train_and_evaluate_models(df_with_pca: pd.DataFrame) -> None:
     else:
         console.print(f"Best CV score: [bold]{lr_grid.best_score_:.4f}[/bold]")
         console.print(f"Best params: {lr_grid.best_params_}")
-        evaluate_classifier("LogisticRegression", lr_grid.best_estimator_, x_test, y_test)
+        model_results_dir = results_dir / "logistic_regression"
+        _ = evaluate_classifier(
+            "LogisticRegression",
+            lr_grid.best_estimator_,
+            x_test,
+            y_test,
+            model_results_dir,
+            feature_names,
+        )
 
 
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
-def run_ml_models(dataset_path: Path, show_tsne: bool = False, perform_word2vec: bool = False) -> None:
-    """Load the final PCA-processed dataset and run all models."""
+def run_ml_models(
+    *,
+    dataset_path: Path,
+    perform_word2vec: bool = False,
+    results_dir: Path,
+    show_plots: bool = False,
+) -> None:
+    """Load the final PCA-processed dataset and run all classical ML models.
+
+    Args:
+        dataset_path: Path to the preprocessed dataset with PCA components and labels.
+        perform_word2vec: Whether to train Word2Vec embeddings as an optional step.
+        results_dir: Directory where plots and reports will be written.
+        show_plots: Whether to render plots interactively in addition to saving them.
+    """
     console.rule("[bold]Loading dataset[/bold]")
     console.print(f"Reading dataset from: [italic]{dataset_path}[/italic]")
     df = pd.read_csv(dataset_path)
 
     console.print(Panel.fit(f"Rows: {df.shape[0]}  Columns: {df.shape[1]}", title="Raw dataset"))
 
-    # Optional: t-SNE visualization
-    if show_tsne:
-        plot_tsne_embeddings(df["CleanedText"].astype(str), df["label"], cleaned=True)
+    tsne_path = results_dir / "tsne.png"
+    plot_tsne_embeddings(
+        texts=df["CleanedText"].astype(str),
+        labels=df["label"],
+        cleaned=True,
+        save_path=tsne_path,
+        show_plot=show_plots,
+    )
 
     # Optional: Word2Vec sentence embeddings (not used in modeling below)
     if perform_word2vec:
@@ -425,4 +660,4 @@ def run_ml_models(dataset_path: Path, show_tsne: bool = False, perform_word2vec:
         label_table.add_row(str(lbl), str(cnt))
     console.print(label_table)
 
-    train_and_evaluate_models(model_df)
+    train_and_evaluate_models(model_df, results_dir=results_dir, show_plots=show_plots)

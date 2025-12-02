@@ -28,7 +28,7 @@ from transformers import (
     get_linear_schedule_with_warmup as _get_linear_schedule_with_warmup,  # type: ignore[reportUnknownVariableType]
 )
 
-from src.utils import render_evaluation_report, rolling_status
+from src.utils import finalize_plot, render_evaluation_report, rolling_status
 
 SEED = 0
 BERT_MODEL_NAME = "bert-base-uncased"
@@ -455,8 +455,14 @@ def train_model(
 # ---------------------------------------------------------------------------
 # Plotting
 # ---------------------------------------------------------------------------
-def plot_loss_curves(epoch_stats: list[EpochStats]) -> None:
-    """Plot training and validation loss curves."""
+def plot_loss_curves(epoch_stats: list[EpochStats], save_path: Path, show_plot: bool = False) -> None:
+    """Plot training and validation loss curves.
+
+    Args:
+        epoch_stats: Per-epoch training/validation metrics.
+        save_path: Destination for the loss plot image.
+        show_plot: Whether to display the plot interactively.
+    """
     if not epoch_stats:
         console.print("[yellow]No epoch statistics available, skipping loss plot[/yellow]")
         return
@@ -472,7 +478,7 @@ def plot_loss_curves(epoch_stats: list[EpochStats]) -> None:
         ],
     ).set_index("epoch")
 
-    _ = plt.figure(figsize=(10, 5))
+    fig = plt.figure(figsize=(10, 5))
     _ = plt.plot(df_stats.index, df_stats["train_loss"], marker="o", label="Training")
     _ = plt.plot(df_stats.index, df_stats["val_loss"], marker="o", label="Validation")
 
@@ -482,7 +488,13 @@ def plot_loss_curves(epoch_stats: list[EpochStats]) -> None:
     _ = plt.xticks(df_stats.index.tolist())
     _ = plt.legend()
     plt.tight_layout()
-    plt.show()
+    status_msg = "Showing BERT loss curves"
+    finalize_plot(
+        fig=fig,
+        save_path=save_path,
+        show=show_plot,
+        status_msg=status_msg,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -521,8 +533,20 @@ def evaluate_on_test(
     test_df: pd.DataFrame,
     config: BertConfig,
     device: torch.device,
+    results_dir: Path,
+    show_plots: bool = False,
 ) -> None:
-    """Evaluate fine-tuned model on the held-out test set."""
+    """Evaluate the fine-tuned model on the held-out test set and log artifacts.
+
+    Args:
+        model: Trained BERT classifier.
+        tokenizer: Tokenizer used during training.
+        test_df: DataFrame containing ``text_`` and ``label`` columns for testing.
+        config: Training/evaluation configuration.
+        device: Torch device for running inference.
+        results_dir: Directory to store evaluation plots and reports.
+        show_plots: Whether to display plots interactively while saving them.
+    """
     console.rule("[bold]Test set evaluation[/bold]")
     sentences_test = test_df["text_"].astype(str)
     labels_test = test_df["label"].to_numpy()
@@ -562,11 +586,30 @@ def evaluate_on_test(
     true_np = np.concatenate(true_labels, axis=0)
 
     predicted = np.argmax(pred_np, axis=1)
+    bert_results = results_dir / "bert"
+    bert_results.mkdir(parents=True, exist_ok=True)
     render_evaluation_report(
         name="BERT",
         y_true=true_np,
         y_pred=predicted,
         console=console,
+        results_dir=bert_results,
+        show_plots=show_plots,
+    )
+
+    # Hidden-state norm distribution on logits (as a proxy)
+    logits_norm = np.linalg.norm(pred_np, axis=1)
+    fig, ax = plt.subplots(figsize=(6, 4))
+    _ = ax.hist(logits_norm, bins=30, color="steelblue", alpha=0.8)
+    _ = ax.set_title("BERT logits norm distribution")
+    _ = ax.set_xlabel("Norm")
+    _ = ax.set_ylabel("Count")
+    fig.tight_layout()
+    finalize_plot(
+        fig=fig,
+        save_path=bert_results / "logits_norm_distribution.png",
+        show=show_plots,
+        status_msg="Showing BERT logits norm distribution",
     )
 
 
@@ -608,8 +651,17 @@ def compute_bert_embeddings(
 def plot_tsne_embeddings(
     embeddings: np.ndarray,
     labels: np.ndarray,
+    save_path: Path,
+    show_plot: bool = False,
 ) -> None:
-    """Project embeddings to 2D with t-SNE and show a scatter plot."""
+    """Project embeddings to 2D with t-SNE and show a scatter plot.
+
+    Args:
+        embeddings: CLS embeddings to project.
+        labels: Numeric labels corresponding to each embedding.
+        save_path: Destination where the t-SNE plot will be written.
+        show_plot: Whether to display the plot interactively.
+    """
     console.rule("[bold]t-SNE embedding[/bold]")
     console.print("Running t-SNE projection on BERT embeddings")
 
@@ -617,7 +669,7 @@ def plot_tsne_embeddings(
     embedded = cast("np.ndarray", tsne.fit_transform(embeddings))
     labels_np = np.asarray(labels)
 
-    _ = plt.figure(figsize=(8, 6))
+    fig = plt.figure(figsize=(8, 6))
     scatter = plt.scatter(
         embedded[:, 0],
         embedded[:, 1],
@@ -630,18 +682,24 @@ def plot_tsne_embeddings(
     _ = plt.xlabel("Component 1")
     _ = plt.ylabel("Component 2")
     plt.tight_layout()
-    plt.show()
+    finalize_plot(
+        fig=fig,
+        save_path=save_path,
+        show=show_plot,
+        status_msg="Showing BERT t-SNE plot",
+    )
 
 
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 def run_bert_classifier(
+    *,
     dataset_path: Path,
     output_dir: Path,
     config: BertConfig | None = None,
-    show_loss_plot: bool = True,
-    show_tsne: bool = True,
+    results_dir: Path,
+    show_plots: bool = False,
 ) -> None:
     """Run the full BERT fine-tuning pipeline on the given dataset.
 
@@ -649,8 +707,8 @@ def run_bert_classifier(
         dataset_path: Path to the CSV file with at least 'text_' and 'label'.
         config: Optional configuration for BERT training.
         output_dir: Directory to save model and tokenizer.
-        show_loss_plot: Whether to display training/validation loss curves.
-        show_tsne: Whether to compute and display t-SNE plot on test embeddings.
+        results_dir: Directory where plots and evaluation artifacts are stored.
+        show_plots: Whether to display plots interactively while saving them.
     """
     if config is None:
         config = BertConfig()
@@ -694,8 +752,8 @@ def run_bert_classifier(
     total_time = _format_time(time.time() - t0)
     console.print(f"Total training time: [bold]{total_time}[/bold]")
 
-    if show_loss_plot:
-        plot_loss_curves(epoch_stats)
+    loss_path = results_dir / "bert" / "loss_curves.png"
+    plot_loss_curves(epoch_stats, save_path=loss_path, show_plot=show_plots)
 
     # Save model and tokenizer
     save_dir = output_dir or Path("./bert_model")
@@ -715,21 +773,27 @@ def run_bert_classifier(
         test_df=test_df,
         config=config,
         device=device,
+        results_dir=results_dir,
+        show_plots=show_plots,
     )
 
-    # Optional t-SNE visualization on test embeddings
-    if show_tsne:
-        console.print("Computing BERT embeddings for t-SNE")
-        prediction_dataloader = _build_prediction_dataloader(
-            tokenizer=tokenizer,
-            texts=test_df["text_"].astype(str),
-            labels=test_df["label"].to_numpy(),
-            config=config,
-            device=device,
-        )
-        embeddings = compute_bert_embeddings(
-            model=model,
-            dataloader=prediction_dataloader,
-            device=device,
-        )
-        plot_tsne_embeddings(embeddings, np.asarray(test_df["label"].values))
+    console.print("Computing BERT embeddings for t-SNE")
+    prediction_dataloader = _build_prediction_dataloader(
+        tokenizer=tokenizer,
+        texts=test_df["text_"].astype(str),
+        labels=test_df["label"].to_numpy(),
+        config=config,
+        device=device,
+    )
+    embeddings = compute_bert_embeddings(
+        model=model,
+        dataloader=prediction_dataloader,
+        device=device,
+    )
+    tsne_path = results_dir / "bert" / "tsne.png"
+    plot_tsne_embeddings(
+        embeddings,
+        np.asarray(test_df["label"].values),
+        save_path=tsne_path,
+        show_plot=show_plots,
+    )

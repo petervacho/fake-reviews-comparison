@@ -134,8 +134,19 @@ def _evaluate_split(
     model: nn.Module,
     x_tensor: Tensor,
     y_tensor: Tensor,
+    results_dir: Path,
+    show_plots: bool = False,
 ) -> None:
-    """Evaluate the model on a given split and print metrics."""
+    """Evaluate the model on a given split and print metrics.
+
+    Args:
+        name: Identifier for the split being evaluated (e.g., ``train`` or ``test``).
+        model: Trained feed-forward network.
+        x_tensor: Features for the split.
+        y_tensor: True labels for the split.
+        results_dir: Directory where evaluation artifacts are stored.
+        show_plots: Whether to render plots interactively while saving them.
+    """
     cpu_device = torch.device("cpu")
     model = model.to(cpu_device)
     x_eval = x_tensor.to(cpu_device)
@@ -158,6 +169,8 @@ def _evaluate_split(
         y_true=y_true_np,
         y_pred=y_pred_np,
         console=console,
+        results_dir=results_dir,
+        show_plots=show_plots,
     )
 
 
@@ -165,12 +178,24 @@ def _evaluate_split(
 # Training
 # ---------------------------------------------------------------------------
 def train_feed_forward(
+    *,
     df_with_pca: pd.DataFrame,
     num_iterations: int = 20_000,
     learning_rate: float = 1e-2,
     weight_decay: float = 1e-6,
+    results_dir: Path,
+    show_plots: bool = False,
 ) -> None:
-    """Train the feed-forward network and evaluate it on train and test splits."""
+    """Train the feed-forward network and evaluate it on train and test splits.
+
+    Args:
+        df_with_pca: Modeling dataframe containing PCA features and labels.
+        num_iterations: Number of training iterations.
+        learning_rate: Optimizer learning rate.
+        weight_decay: Weight decay applied to the optimizer.
+        results_dir: Directory where evaluation artifacts are written.
+        show_plots: Whether to display plots interactively while saving them.
+    """
     set_global_seed(SEED)
     device = select_device()
 
@@ -224,15 +249,22 @@ def train_feed_forward(
         return
 
     # Evaluation (original script evaluated on train; here we do both)
-    _evaluate_split("train", model, x_train_tensor, y_train_tensor)
-    _evaluate_split("test", model, x_test_tensor, y_test_tensor)
+    split_dir = results_dir / "feed_forward"
+    _evaluate_split("train", model, x_train_tensor, y_train_tensor, results_dir=split_dir, show_plots=show_plots)
+    _evaluate_split("test", model, x_test_tensor, y_test_tensor, results_dir=split_dir, show_plots=show_plots)
 
 
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
-def run_feed_forward(dataset_path: Path) -> None:
-    """Run the full feed-forward pipeline on the final PCA dataset."""
+def run_feed_forward(*, dataset_path: Path, results_dir: Path, show_plots: bool = False) -> None:
+    """Run the full feed-forward pipeline on the final PCA dataset.
+
+    Args:
+        dataset_path: Path to the preprocessed dataset with PCA components and labels.
+        results_dir: Directory to store evaluation artifacts.
+        show_plots: Whether to display plots interactively while saving them.
+    """
     console.rule("[bold]Loading dataset for feed-forward network[/bold]")
     console.print(f"Reading dataset from: [italic]{dataset_path}[/italic]")
     df = pd.read_csv(dataset_path)
@@ -251,4 +283,8 @@ def run_feed_forward(dataset_path: Path) -> None:
     model_df = prepare_modeling_frame(df)
 
     console.rule("[bold]Feed-forward neural network on PCA-based features[/bold]")
-    train_feed_forward(model_df)
+    train_feed_forward(
+        df_with_pca=model_df,
+        results_dir=results_dir,
+        show_plots=show_plots,
+    )
