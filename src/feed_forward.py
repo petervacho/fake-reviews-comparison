@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 from pathlib import Path
-from typing import Any, override
+from typing import override
 
 import numpy as np
 import pandas as pd
@@ -10,11 +10,10 @@ import torch
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from sklearn.metrics import classification_report  # pyright: ignore[reportUnknownVariableType]
 from torch import Tensor, nn, optim
 
 from src.ml_models import prepare_modeling_frame
-from src.utils import plot_confusion_matrix, rolling_status
+from src.utils import render_evaluation_report, rolling_status
 
 SEED = 0
 INPUT_DIM = 56
@@ -137,8 +136,6 @@ def _evaluate_split(
     y_tensor: Tensor,
 ) -> None:
     """Evaluate the model on a given split and print metrics."""
-    console.rule(f"[bold]Evaluation on {name} split[/bold]")
-
     cpu_device = torch.device("cpu")
     model = model.to(cpu_device)
     x_eval = x_tensor.to(cpu_device)
@@ -153,60 +150,15 @@ def _evaluate_split(
             torch.tensor(0, device=cpu_device),
         ).flatten()
 
-    # Accuracy as in the original script (on tensors)
-    acc = (y_pred == y_eval).float().mean().item()
-
-    # Classification report via sklearn
     y_true_np = y_eval.cpu().numpy()
     y_pred_np = y_pred.cpu().numpy()
 
-    report_dict: dict[str, Any] = classification_report(  # type: ignore[reportUnknownArgumentType]
-        y_true_np,
-        y_pred_np,
-        output_dict=True,
+    render_evaluation_report(
+        name=f"FeedForward ({name})",
+        y_true=y_true_np,
+        y_pred=y_pred_np,
+        console=console,
     )
-
-    # Accuracy table
-    metrics_table = Table(show_header=True, header_style="bold")
-    metrics_table.add_column("Metric")
-    metrics_table.add_column("Value", justify="right")
-    metrics_table.add_row("Accuracy", f"{acc:.4f}")
-    console.print(metrics_table)
-
-    # Detailed classification report table
-    console.print("\n[bold]Classification report[/bold]")
-    report_table = Table(show_header=True, header_style="bold")
-    report_table.add_column("Class")
-    report_table.add_column("Precision", justify="right")
-    report_table.add_column("Recall", justify="right")
-    report_table.add_column("F1 score", justify="right")
-    report_table.add_column("Support", justify="right")
-
-    for label, data in report_dict.items():
-        if label in ("accuracy", "macro avg", "weighted avg"):
-            continue
-        report_table.add_row(
-            label,
-            f"{data['precision']:.4f}",
-            f"{data['recall']:.4f}",
-            f"{data['f1-score']:.4f}",
-            f"{int(data['support'])}",
-        )
-
-    for avg_name in ("macro avg", "weighted avg"):
-        data = report_dict[avg_name]
-        report_table.add_row(
-            avg_name,
-            f"{data['precision']:.4f}",
-            f"{data['recall']:.4f}",
-            f"{data['f1-score']:.4f}",
-            f"{int(data['support'])}",
-        )
-
-    console.print(report_table)
-
-    console.print("\n[bold]Confusion matrix[/bold]")
-    plot_confusion_matrix(name, y_true_np, y_pred_np)
 
 
 # ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@ import random
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -15,7 +15,6 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from sklearn.manifold import TSNE
-from sklearn.metrics import accuracy_score, classification_report
 from sklearn.preprocessing import LabelEncoder
 from torch.optim import AdamW
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
@@ -25,7 +24,7 @@ from transformers import (
     get_linear_schedule_with_warmup,
 )
 
-from src.utils import plot_confusion_matrix, rolling_status
+from src.utils import render_evaluation_report, rolling_status
 
 SEED = 0
 BERT_MODEL_NAME = "bert-base-uncased"
@@ -502,46 +501,6 @@ def _build_prediction_dataloader(
     )
 
 
-def _print_classification_report(true_labels: np.ndarray, predicted: np.ndarray) -> None:
-    """Pretty-print classification report with Rich tables."""
-    report_dict = cast(
-        "dict[str, Any]",
-        classification_report(true_labels, predicted, output_dict=True),
-    )
-
-    console.rule("[bold]Classification report[/bold]")
-
-    report_table = Table(show_header=True, header_style="bold")
-    report_table.add_column("Class")
-    report_table.add_column("Precision", justify="right")
-    report_table.add_column("Recall", justify="right")
-    report_table.add_column("F1 score", justify="right")
-    report_table.add_column("Support", justify="right")
-
-    for label_name, data in report_dict.items():
-        if label_name in ("accuracy", "macro avg", "weighted avg"):
-            continue
-        report_table.add_row(
-            label_name,
-            f"{data['precision']:.4f}",
-            f"{data['recall']:.4f}",
-            f"{data['f1-score']:.4f}",
-            f"{int(data['support'])}",
-        )
-
-    for avg_name in ("macro avg", "weighted avg"):
-        data = report_dict[avg_name]
-        report_table.add_row(
-            avg_name,
-            f"{data['precision']:.4f}",
-            f"{data['recall']:.4f}",
-            f"{data['f1-score']:.4f}",
-            f"{int(data['support'])}",
-        )
-
-    console.print(report_table)
-
-
 def evaluate_on_test(
     model: BertForSequenceClassification,
     tokenizer: BertTokenizer,
@@ -589,12 +548,12 @@ def evaluate_on_test(
     true_np = np.concatenate(true_labels, axis=0)
 
     predicted = np.argmax(pred_np, axis=1)
-    acc = accuracy_score(true_np, predicted)
-
-    console.print(f"Test accuracy: [bold]{acc:.4f}[/bold]")
-    _print_classification_report(true_np, predicted)
-    console.print("\n[bold]Confusion matrix[/bold]")
-    plot_confusion_matrix("BERT", true_np, predicted)
+    render_evaluation_report(
+        name="BERT",
+        y_true=true_np,
+        y_pred=predicted,
+        console=console,
+    )
 
 
 # ---------------------------------------------------------------------------

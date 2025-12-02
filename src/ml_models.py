@@ -17,14 +17,12 @@ from sklearn.ensemble import AdaBoostClassifier, RandomForestClassifier
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.manifold import TSNE
-from sklearn.metrics import accuracy_score, classification_report  # pyright: ignore[reportUnknownVariableType]
-from sklearn.metrics import precision_recall_fscore_support as score  # pyright: ignore[reportUnknownVariableType]
 from sklearn.model_selection import GridSearchCV
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler
 from sklearn.svm import SVC
 
-from src.utils import plot_confusion_matrix, rolling_status
+from src.utils import render_evaluation_report, rolling_status
 
 SEED = 0
 
@@ -161,62 +159,12 @@ def evaluate_classifier(name: str, model: Any, x_test: np.ndarray | pd.DataFrame
     """Pretty-print evaluation metrics for a classifier."""
     y_pred = model.predict(x_test)
 
-    acc = accuracy_score(y_test, y_pred)
-    precision, recall, fscore, _ = score(y_test, y_pred, average="micro")
-
-    # Main metrics table
-    console.rule(f"[bold]{name} evaluation[/bold]")
-
-    metrics_table = Table(show_header=True, header_style="bold")
-    metrics_table.add_column("Metric")
-    metrics_table.add_column("Value", justify="right")
-
-    metrics_table.add_row("Accuracy", f"{acc:.4f}")
-    metrics_table.add_row("Precision", f"{precision:.4f}")
-    metrics_table.add_row("Recall", f"{recall:.4f}")
-    metrics_table.add_row("F1 score", f"{fscore:.4f}")
-
-    console.print(metrics_table)
-
-    # Rich classification report table
-    console.print("\n[bold]Classification report[/bold]")
-
-    report_dict = cast("dict[str, Any]", classification_report(y_test, y_pred, output_dict=True))
-
-    report_table = Table(show_header=True, header_style="bold")
-    report_table.add_column("Class")
-    report_table.add_column("Precision", justify="right")
-    report_table.add_column("Recall", justify="right")
-    report_table.add_column("F1 score", justify="right")
-    report_table.add_column("Support", justify="right")
-
-    # Add rows for actual classes (0,1,...)
-    for label, data in report_dict.items():
-        if label in ("accuracy", "macro avg", "weighted avg"):
-            continue
-        report_table.add_row(
-            label,
-            f"{data['precision']:.4f}",
-            f"{data['recall']:.4f}",
-            f"{data['f1-score']:.4f}",
-            f"{int(data['support'])}",
-        )
-
-    # Add summary rows
-    for avg_name in ("macro avg", "weighted avg"):
-        data = report_dict[avg_name]
-        report_table.add_row(
-            avg_name,
-            f"{data['precision']:.4f}",
-            f"{data['recall']:.4f}",
-            f"{data['f1-score']:.4f}",
-            f"{int(data['support'])}",
-        )
-
-    console.print(report_table)
-
-    console.print("\n[bold]Confusion matrix[/bold]")
-    plot_confusion_matrix(name, y_test, y_pred)
+    render_evaluation_report(
+        name=name,
+        y_true=y_test,
+        y_pred=y_pred,
+        console=console,
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -15,8 +15,15 @@ from rich.console import Console
 from rich.live import Live
 from rich.spinner import Spinner
 from rich.style import Style
+from rich.table import Table
 from rich.text import Text
-from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
+from sklearn.metrics import (
+    ConfusionMatrixDisplay,
+    accuracy_score,
+    classification_report,
+    confusion_matrix,
+    precision_recall_fscore_support,
+)
 
 
 class RollingWindow:
@@ -269,7 +276,84 @@ def plot_confusion_matrix(
     _ = ax.set_xlabel("Predicted label")
     _ = ax.set_ylabel("True label")
     if name:
-        _ = ax.set_title(f"{name.capitalize()} confusion matrix")
+        _ = ax.set_title(f"{name} confusion matrix")
     fig.tight_layout()
-    with Console().status(f"Showing confusion matrix for {name} (close figure to continue)"):
+    status_msg = f"Showing confusion matrix for {name}" if name else "Showing confusion matrix"
+    with Console().status(f"{status_msg} (close figure to continue)"):
         plt.show()
+
+
+def render_evaluation_report(
+    name: str,
+    y_true: Iterable[int],
+    y_pred: Iterable[int],
+    console: Console,
+    labels: Sequence[str | int] | None = None,
+) -> None:
+    """Print a consistent evaluation summary with metrics, report, and confusion matrix."""
+    y_true_arr = np.asarray(list(y_true))
+    y_pred_arr = np.asarray(list(y_pred))
+
+    label_values = np.asarray(labels) if labels is not None else np.unique(np.concatenate((y_true_arr, y_pred_arr)))
+
+    acc = accuracy_score(y_true_arr, y_pred_arr)
+    precision, recall, fscore, _ = precision_recall_fscore_support(
+        y_true_arr,
+        y_pred_arr,
+        average="micro",
+        zero_division=0,
+    )
+
+    console.rule(f"[bold]{name} evaluation[/bold]")
+
+    metrics_table = Table(show_header=True, header_style="bold")
+    metrics_table.add_column("Metric")
+    metrics_table.add_column("Value", justify="right")
+    metrics_table.add_row("Accuracy", f"{acc:.4f}")
+    metrics_table.add_row("Precision", f"{precision:.4f}")
+    metrics_table.add_row("Recall", f"{recall:.4f}")
+    metrics_table.add_row("F1 score", f"{fscore:.4f}")
+    console.print(metrics_table)
+
+    console.print("\n[bold]Classification report[/bold]")
+    report_dict = classification_report(
+        y_true_arr,
+        y_pred_arr,
+        labels=label_values,
+        target_names=[str(lbl) for lbl in label_values],
+        output_dict=True,
+        zero_division=0,
+    )
+
+    report_table = Table(show_header=True, header_style="bold")
+    report_table.add_column("Class")
+    report_table.add_column("Precision", justify="right")
+    report_table.add_column("Recall", justify="right")
+    report_table.add_column("F1 score", justify="right")
+    report_table.add_column("Support", justify="right")
+
+    for lbl, data in report_dict.items():
+        if lbl in ("accuracy", "macro avg", "weighted avg"):
+            continue
+        report_table.add_row(
+            lbl,
+            f"{data['precision']:.4f}",
+            f"{data['recall']:.4f}",
+            f"{data['f1-score']:.4f}",
+            f"{int(data['support'])}",
+        )
+
+    for avg_name in ("macro avg", "weighted avg"):
+        data = report_dict[avg_name]
+        report_table.add_row(
+            avg_name,
+            f"{data['precision']:.4f}",
+            f"{data['recall']:.4f}",
+            f"{data['f1-score']:.4f}",
+            f"{int(data['support'])}",
+        )
+
+    console.print(report_table)
+
+    console.print("\n[bold]Confusion matrix[/bold]")
+    plot_confusion_matrix(name, y_true_arr, y_pred_arr, labels=label_values)
