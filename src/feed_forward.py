@@ -14,7 +14,7 @@ from sklearn.metrics import classification_report  # pyright: ignore[reportUnkno
 from torch import Tensor, nn, optim
 
 from src.ml_models import prepare_modeling_frame
-from src.utils import rolling_status
+from src.utils import plot_confusion_matrix, rolling_status
 
 SEED = 0
 INPUT_DIM = 56
@@ -204,6 +204,9 @@ def _evaluate_split(
         )
 
     console.print(report_table)
+
+    console.print("\n[bold]Confusion matrix[/bold]")
+    plot_confusion_matrix(name, y_true_np, y_pred_np)
 
 
 # ---------------------------------------------------------------------------

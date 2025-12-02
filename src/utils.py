@@ -4,16 +4,19 @@ import builtins
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from typing import Any
 from warnings import warn
 
+import matplotlib.pyplot as plt
+import numpy as np
 from rich.console import Console
 from rich.live import Live
 from rich.spinner import Spinner
 from rich.style import Style
 from rich.text import Text
+from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
 
 
 class RollingWindow:
@@ -244,3 +247,29 @@ def rolling_status(
             builtins.print = original_print
 
             update(final=True)
+
+
+def plot_confusion_matrix(
+    name: str,
+    y_true: Iterable[int],
+    y_pred: Iterable[int],
+    labels: Sequence[str | int] | None = None,
+) -> None:
+    """Plot a confusion matrix using matplotlib."""
+    y_true_arr = np.asarray(list(y_true))
+    y_pred_arr = np.asarray(list(y_pred))
+
+    label_values = np.asarray(labels) if labels is not None else np.unique(np.concatenate((y_true_arr, y_pred_arr)))
+
+    cm = confusion_matrix(y_true_arr, y_pred_arr, labels=label_values)
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=label_values)
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+    _ = disp.plot(ax=ax, cmap="Blues", colorbar=False)
+    _ = ax.set_xlabel("Predicted label")
+    _ = ax.set_ylabel("True label")
+    if name:
+        _ = ax.set_title(f"{name.capitalize()} confusion matrix")
+    fig.tight_layout()
+    with Console().status(f"Showing confusion matrix for {name} (close figure to continue)"):
+        plt.show()

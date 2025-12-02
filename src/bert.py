@@ -25,7 +25,7 @@ from transformers import (
     get_linear_schedule_with_warmup,
 )
 
-from src.utils import rolling_status
+from src.utils import plot_confusion_matrix, rolling_status
 
 SEED = 0
 BERT_MODEL_NAME = "bert-base-uncased"
@@ -593,6 +593,8 @@ def evaluate_on_test(
 
     console.print(f"Test accuracy: [bold]{acc:.4f}[/bold]")
     _print_classification_report(true_np, predicted)
+    console.print("\n[bold]Confusion matrix[/bold]")
+    plot_confusion_matrix("BERT", true_np, predicted)
 
 
 # ---------------------------------------------------------------------------

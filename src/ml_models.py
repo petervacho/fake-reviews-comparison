@@ -24,7 +24,7 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler
 from sklearn.svm import SVC
 
-from src.utils import rolling_status
+from src.utils import plot_confusion_matrix, rolling_status
 
 SEED = 0
 
@@ -214,6 +214,9 @@ def evaluate_classifier(name: str, model: Any, x_test: np.ndarray | pd.DataFrame
         )
 
     console.print(report_table)
+
+    console.print("\n[bold]Confusion matrix[/bold]")
+    plot_confusion_matrix(name, y_test, y_pred)
 
 
 # ---------------------------------------------------------------------------
