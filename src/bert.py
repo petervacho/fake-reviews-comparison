@@ -81,7 +81,7 @@ def set_seed(seed: int) -> None:
     """Set random seeds for Python, NumPy and PyTorch."""
     random.seed(seed)
     np.random.seed(seed)  # noqa: NPY002
-    torch.manual_seed(seed)
+    _ = torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 
@@ -208,7 +208,7 @@ def create_data_loaders(
     """
     console.rule("[bold]Preparing tensors[/bold]")
     sentences = train_df["text_"]
-    labels = train_df["label"].values
+    labels = train_df["label"].to_numpy()
 
     input_ids, attention_masks = tokenize_texts(
         tokenizer=tokenizer,
@@ -268,7 +268,7 @@ def build_model(
         output_attentions=False,
         output_hidden_states=False,
     )
-    model.to(device)
+    _ = model.to(device)
     return model
 
 
@@ -314,7 +314,7 @@ def _run_validation_epoch(
         Tuple of (avg_accuracy, avg_loss, validation_time_str).
     """
     t0 = time.time()
-    model.eval()
+    _ = model.eval()
 
     total_eval_accuracy = 0.0
     total_eval_loss = 0.0
@@ -375,7 +375,7 @@ def train_model(
             t0 = time.time()
             total_train_loss = 0.0
 
-            model.train()
+            _ = model.train()
 
             for step, batch in enumerate(train_dataloader, start=1):
                 b_ids, b_mask, b_labels = (t.to(device) for t in batch)
@@ -396,7 +396,7 @@ def train_model(
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
-                optimizer.step()
+                _ = optimizer.step()
                 scheduler.step()
 
                 if step % 40 == 0 or step == len(train_dataloader):
@@ -459,15 +459,15 @@ def plot_loss_curves(epoch_stats: list[EpochStats]) -> None:
         ],
     ).set_index("epoch")
 
-    plt.figure(figsize=(10, 5))
-    plt.plot(df_stats.index, df_stats["train_loss"], marker="o", label="Training")
-    plt.plot(df_stats.index, df_stats["val_loss"], marker="o", label="Validation")
+    _ = plt.figure(figsize=(10, 5))
+    _ = plt.plot(df_stats.index, df_stats["train_loss"], marker="o", label="Training")
+    _ = plt.plot(df_stats.index, df_stats["val_loss"], marker="o", label="Validation")
 
-    plt.title("Training and Validation Loss")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.xticks(df_stats.index.tolist())
-    plt.legend()
+    _ = plt.title("Training and Validation Loss")
+    _ = plt.xlabel("Epoch")
+    _ = plt.ylabel("Loss")
+    _ = plt.xticks(df_stats.index.tolist())
+    _ = plt.legend()
     plt.tight_layout()
     plt.show()
 
@@ -552,7 +552,7 @@ def evaluate_on_test(
     """Evaluate fine-tuned model on the held-out test set."""
     console.rule("[bold]Test set evaluation[/bold]")
     sentences_test = test_df["text_"].astype(str)
-    labels_test = test_df["label"].values
+    labels_test = test_df["label"].to_numpy()
 
     prediction_dataloader = _build_prediction_dataloader(
         tokenizer=tokenizer,
@@ -562,7 +562,7 @@ def evaluate_on_test(
         device=device,
     )
 
-    model.eval()
+    _ = model.eval()
     predictions: list[np.ndarray] = []
     true_labels: list[np.ndarray] = []
 
@@ -604,7 +604,7 @@ def compute_bert_embeddings(
     device: torch.device,
 ) -> np.ndarray:
     """Compute CLS token embeddings for all samples in a dataloader."""
-    model.eval()
+    _ = model.eval()
     all_embeddings: list[np.ndarray] = []
 
     for batch in dataloader:
