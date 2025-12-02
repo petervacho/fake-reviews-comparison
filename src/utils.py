@@ -6,7 +6,7 @@ import threading
 import time
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, cast
 from warnings import warn
 
 import matplotlib.pyplot as plt
@@ -19,10 +19,10 @@ from rich.table import Table
 from rich.text import Text
 from sklearn.metrics import (
     ConfusionMatrixDisplay,
-    accuracy_score,
-    classification_report,
-    confusion_matrix,
-    precision_recall_fscore_support,
+    accuracy_score,  # pyright: ignore[reportUnknownVariableType]
+    classification_report,  # pyright: ignore[reportUnknownVariableType]
+    confusion_matrix,  # pyright: ignore[reportUnknownVariableType]
+    precision_recall_fscore_support,  # pyright: ignore[reportUnknownVariableType]
 )
 
 
@@ -268,7 +268,7 @@ def plot_confusion_matrix(
 
     label_values = np.asarray(labels) if labels is not None else np.unique(np.concatenate((y_true_arr, y_pred_arr)))
 
-    cm = confusion_matrix(y_true_arr, y_pred_arr, labels=label_values)
+    cm = cast("np.ndarray", confusion_matrix(y_true_arr, y_pred_arr, labels=label_values))
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=label_values)
 
     fig, ax = plt.subplots(figsize=(6, 5))
@@ -294,14 +294,15 @@ def render_evaluation_report(
     y_true_arr = np.asarray(list(y_true))
     y_pred_arr = np.asarray(list(y_pred))
 
-    label_values = np.asarray(labels) if labels is not None else np.unique(np.concatenate((y_true_arr, y_pred_arr)))
+    raw_labels = np.asarray(labels) if labels is not None else np.unique(np.concatenate((y_true_arr, y_pred_arr)))
+    label_values = [cast("str | int", v.item() if hasattr(v, "item") else v) for v in raw_labels.tolist()]
 
     acc = accuracy_score(y_true_arr, y_pred_arr)
     precision, recall, fscore, _ = precision_recall_fscore_support(
         y_true_arr,
         y_pred_arr,
         average="micro",
-        zero_division=0,
+        zero_division=0,  # pyright: ignore[reportArgumentType]
     )
 
     console.rule(f"[bold]{name} evaluation[/bold]")
@@ -316,13 +317,16 @@ def render_evaluation_report(
     console.print(metrics_table)
 
     console.print("\n[bold]Classification report[/bold]")
-    report_dict = classification_report(
-        y_true_arr,
-        y_pred_arr,
-        labels=label_values,
-        target_names=[str(lbl) for lbl in label_values],
-        output_dict=True,
-        zero_division=0,
+    report_dict = cast(
+        "dict[str, dict[str, float | int]]",
+        classification_report(
+            y_true_arr,
+            y_pred_arr,
+            labels=label_values,
+            target_names=[str(lbl) for lbl in label_values],
+            output_dict=True,
+            zero_division=0,  # pyright: ignore[reportArgumentType]
+        ),
     )
 
     report_table = Table(show_header=True, header_style="bold")

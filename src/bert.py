@@ -3,9 +3,10 @@ from __future__ import annotations
 import datetime
 import random
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,11 +18,14 @@ from rich.table import Table
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import LabelEncoder
 from torch.optim import AdamW
+from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
 from transformers import (
     BertForSequenceClassification,
     BertTokenizer,
-    get_linear_schedule_with_warmup,
+)
+from transformers import (
+    get_linear_schedule_with_warmup as _get_linear_schedule_with_warmup,  # type: ignore[reportUnknownVariableType]
 )
 
 from src.utils import render_evaluation_report, rolling_status
@@ -30,6 +34,18 @@ SEED = 0
 BERT_MODEL_NAME = "bert-base-uncased"
 
 console = Console()
+Batch = tuple[torch.Tensor, ...]
+type DataLoaderBatch = DataLoader[Batch]
+get_linear_schedule_with_warmup: Callable[..., LambdaLR] = _get_linear_schedule_with_warmup  # type: ignore[reportUnknownVariableType]
+
+
+def _make_scheduler(optimizer: torch.optim.Optimizer, total_steps: int) -> LambdaLR:
+    """Build a LambdaLR scheduler with linear warmup/decay."""
+    return get_linear_schedule_with_warmup(
+        optimizer,
+        num_warmup_steps=0,
+        num_training_steps=total_steps,
+    )
 
 
 @dataclass
@@ -185,7 +201,9 @@ def tokenize_texts(
         return_attention_mask=True,
         return_tensors="pt",
     )
-    return encoded["input_ids"], encoded["attention_mask"]
+    input_ids = cast("torch.Tensor", encoded["input_ids"])
+    attention_mask = cast("torch.Tensor", encoded["attention_mask"])
+    return input_ids, attention_mask
 
 
 def create_data_loaders(
@@ -193,7 +211,7 @@ def create_data_loaders(
     train_df: pd.DataFrame,
     config: BertConfig,
     device: torch.device,
-) -> tuple[DataLoader, DataLoader]:
+) -> tuple[DataLoaderBatch, DataLoaderBatch]:
     """Create training and validation data loaders.
 
     Args:
@@ -237,12 +255,12 @@ def create_data_loaders(
         ),
     )
 
-    train_dataloader = DataLoader(
+    train_dataloader: DataLoaderBatch = DataLoader(
         train_dataset,
         sampler=RandomSampler(train_dataset),
         batch_size=config.batch_size,
     )
-    validation_dataloader = DataLoader(
+    validation_dataloader: DataLoaderBatch = DataLoader(
         val_dataset,
         sampler=SequentialSampler(val_dataset),
         batch_size=config.batch_size,
@@ -267,15 +285,15 @@ def build_model(
         output_attentions=False,
         output_hidden_states=False,
     )
-    _ = model.to(device)
+    _ = model.to(device)  # pyright: ignore[reportArgumentType]
     return model
 
 
 def build_optimizer_and_scheduler(
     model: BertForSequenceClassification,
-    train_dataloader: DataLoader,
+    train_dataloader: DataLoaderBatch,
     config: BertConfig,
-) -> tuple[AdamW, Any]:
+) -> tuple[AdamW, LambdaLR]:
     """Create AdamW optimizer and linear warmup scheduler."""
     optimizer = AdamW(
         model.parameters(),
@@ -284,11 +302,7 @@ def build_optimizer_and_scheduler(
     )
 
     total_steps = len(train_dataloader) * config.epochs
-    scheduler = get_linear_schedule_with_warmup(
-        optimizer,
-        num_warmup_steps=0,
-        num_training_steps=total_steps,
-    )
+    scheduler = _make_scheduler(optimizer, total_steps)
     return optimizer, scheduler
 
 
@@ -304,7 +318,7 @@ def _flat_accuracy(preds: np.ndarray, labels: np.ndarray) -> float:
 
 def _run_validation_epoch(
     model: BertForSequenceClassification,
-    dataloader: DataLoader,
+    dataloader: DataLoaderBatch,
     device: torch.device,
 ) -> tuple[float, float, str]:
     """Run one validation epoch.
@@ -347,8 +361,8 @@ def _run_validation_epoch(
 
 def train_model(
     model: BertForSequenceClassification,
-    train_dataloader: DataLoader,
-    validation_dataloader: DataLoader,
+    train_dataloader: DataLoaderBatch,
+    validation_dataloader: DataLoaderBatch,
     optimizer: AdamW,
     scheduler: Any,
     device: torch.device,
@@ -393,9 +407,9 @@ def train_model(
                 total_train_loss += float(loss.item())
 
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                _ = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
-                _ = optimizer.step()
+                optimizer.step()  # pyright: ignore[reportUnusedCallResult]
                 scheduler.step()
 
                 if step % 40 == 0 or step == len(train_dataloader):
@@ -480,7 +494,7 @@ def _build_prediction_dataloader(
     labels: np.ndarray,
     config: BertConfig,
     device: torch.device,
-) -> DataLoader:
+) -> DataLoaderBatch:
     """Build prediction DataLoader for the test set."""
     input_ids, attention_masks = tokenize_texts(
         tokenizer=tokenizer,
@@ -561,7 +575,7 @@ def evaluate_on_test(
 # ---------------------------------------------------------------------------
 def compute_bert_embeddings(
     model: BertForSequenceClassification,
-    dataloader: DataLoader,
+    dataloader: DataLoaderBatch,
     device: torch.device,
 ) -> np.ndarray:
     """Compute CLS token embeddings for all samples in a dataloader."""
@@ -600,13 +614,14 @@ def plot_tsne_embeddings(
     console.print("Running t-SNE projection on BERT embeddings")
 
     tsne = TSNE(n_components=2, random_state=SEED)
-    embedded = tsne.fit_transform(embeddings)
+    embedded = cast("np.ndarray", tsne.fit_transform(embeddings))
+    labels_np = np.asarray(labels)
 
     _ = plt.figure(figsize=(8, 6))
     scatter = plt.scatter(
         embedded[:, 0],
         embedded[:, 1],
-        c=labels,
+        c=labels_np,
         cmap="coolwarm",
         alpha=0.8,
     )
@@ -626,7 +641,7 @@ def run_bert_classifier(
     output_dir: Path,
     config: BertConfig | None = None,
     show_loss_plot: bool = True,
-    show_tsne: bool = False,
+    show_tsne: bool = True,
 ) -> None:
     """Run the full BERT fine-tuning pipeline on the given dataset.
 
@@ -647,7 +662,10 @@ def run_bert_classifier(
     df, _ = encode_labels(df_raw)
     train_df, test_df = train_test_split_text(df, seed=SEED)
 
-    tokenizer = BertTokenizer.from_pretrained(BERT_MODEL_NAME, do_lower_case=True)
+    tokenizer: BertTokenizer = cast(
+        "BertTokenizer",
+        BertTokenizer.from_pretrained(BERT_MODEL_NAME, do_lower_case=True),
+    )
 
     train_dataloader, val_dataloader = create_data_loaders(
         tokenizer=tokenizer,
@@ -686,9 +704,9 @@ def run_bert_classifier(
     console.rule("[bold]Saving model[/bold]")
     console.print(f"Saving model to: [italic]{save_dir}[/italic]")
 
-    model_to_save = model.module if hasattr(model, "module") else model
-    model_to_save.save_pretrained(save_dir)
-    tokenizer.save_pretrained(save_dir)
+    model_to_save = cast("BertForSequenceClassification", model.module) if hasattr(model, "module") else model
+    _ = model_to_save.save_pretrained(save_dir)
+    _ = tokenizer.save_pretrained(save_dir)
 
     # Evaluate on test set
     evaluate_on_test(
@@ -705,7 +723,7 @@ def run_bert_classifier(
         prediction_dataloader = _build_prediction_dataloader(
             tokenizer=tokenizer,
             texts=test_df["text_"].astype(str),
-            labels=test_df["label"].values,
+            labels=test_df["label"].to_numpy(),
             config=config,
             device=device,
         )
@@ -714,4 +732,4 @@ def run_bert_classifier(
             dataloader=prediction_dataloader,
             device=device,
         )
-        plot_tsne_embeddings(embeddings, test_df["label"].values)
+        plot_tsne_embeddings(embeddings, np.asarray(test_df["label"].values))
