@@ -295,6 +295,16 @@ def evaluate_classifier(
     """
     y_pred = model.predict(x_test)
 
+    # Store predictions for statistical testing
+    results_dir.mkdir(parents=True, exist_ok=True)
+    np.save(results_dir / "y_true.npy", y_test.to_numpy())
+    np.save(results_dir / "y_pred.npy", y_pred)
+
+    # If model supports probabilities, save those too
+    if hasattr(model, "predict_proba"):
+        y_proba = model.predict_proba(x_test)
+        np.save(results_dir / "y_proba.npy", y_proba)
+
     acc = accuracy_score(y_test, y_pred)
     precision, recall, fscore, _ = score(y_test, y_pred, average="micro")
 

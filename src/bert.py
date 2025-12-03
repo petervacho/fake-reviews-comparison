@@ -15,6 +15,7 @@ import torch
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from scipy.special import softmax  # pyright: ignore[reportUnknownVariableType]
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import LabelEncoder
 from torch.optim import AdamW
@@ -30,6 +31,9 @@ from transformers import (
 
 from src.utils.evaluation import finalize_plot, render_evaluation_report
 from src.utils.rich import rolling_status
+
+SoftmaxFn = Callable[..., np.ndarray]
+softmax_fn: SoftmaxFn = cast("SoftmaxFn", softmax)
 
 SEED = 0
 BERT_MODEL_NAME = "bert-base-uncased"
@@ -587,8 +591,18 @@ def evaluate_on_test(
     true_np = np.concatenate(true_labels, axis=0)
 
     predicted = np.argmax(pred_np, axis=1)
+
     bert_results = results_dir / "bert"
     bert_results.mkdir(parents=True, exist_ok=True)
+
+    # Convert logits to probabilities via softmax
+    probs: np.ndarray = softmax_fn(pred_np, axis=1)
+
+    # Save predictions and true labels for statistical testing
+    np.save(bert_results / "y_true.npy", true_np)
+    np.save(bert_results / "y_pred.npy", predicted)
+    np.save(bert_results / "y_proba.npy", probs)
+
     render_evaluation_report(
         name="BERT",
         y_true=true_np,

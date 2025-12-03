@@ -8,6 +8,7 @@ from src.bert import run_bert_classifier
 from src.dataset import generate_final_dataset
 from src.feed_forward import run_feed_forward
 from src.ml_models import run_ml_models
+from src.statistical_tests import run_statistical_tests
 
 # Dataset paths
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -44,6 +45,11 @@ def main() -> None:
     )
     run_bert_classifier(
         dataset_path=FINAL_DATASET_PATH,
+        results_dir=RESULTS_DIR,
+        show_plots=SHOW_PLOTS,
+    )
+
+    run_statistical_tests(
         results_dir=RESULTS_DIR,
         show_plots=SHOW_PLOTS,
     )

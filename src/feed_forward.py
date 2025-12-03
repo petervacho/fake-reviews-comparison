@@ -165,6 +165,16 @@ def _evaluate_split(
     y_true_np = y_eval.cpu().numpy()
     y_pred_np = y_pred.cpu().numpy()
 
+    # Save predictions
+    if name == "test":
+        np.save(results_dir / "y_true.npy", y_true_np)
+        np.save(results_dir / "y_pred.npy", y_pred_np)
+        np.save(results_dir / "y_proba.npy", y_pred_proba.cpu().numpy())
+    else:
+        np.save(results_dir / f"y_true_{name}.npy", y_true_np)
+        np.save(results_dir / f"y_pred_{name}.npy", y_pred_np)
+        np.save(results_dir / f"y_proba_{name}.npy", y_pred_proba.cpu().numpy())
+
     render_evaluation_report(
         name=f"FeedForward ({name})",
         y_true=y_true_np,
