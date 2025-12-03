@@ -220,7 +220,6 @@ def train_feed_forward(
     criterion = nn.BCELoss()
 
     # Training loop (keeps the same iteration count and loss computation)
-    # Training loop (keeps the same iteration count and loss computation)
     stopped = False
     with rolling_status(
         "Training feed-forward neural network",
