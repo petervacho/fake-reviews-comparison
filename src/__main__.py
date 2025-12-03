@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import matplotlib as mpl
+
 from src.bert import run_bert_classifier
 from src.dataset import generate_final_dataset
 from src.feed_forward import run_feed_forward
@@ -21,6 +23,8 @@ SHOW_PLOTS = False
 
 def main() -> None:
     """Main script entry-point."""
+    mpl.use("Agg")
+
     generate_final_dataset(
         raw_dataset_path=REVIEWS_DATASET_PATH,
         final_dataset_path=FINAL_DATASET_PATH,
