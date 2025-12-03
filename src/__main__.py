@@ -44,7 +44,6 @@ def main() -> None:
     )
     run_bert_classifier(
         dataset_path=FINAL_DATASET_PATH,
-        output_dir=DATA_DIR,
         results_dir=RESULTS_DIR,
         show_plots=SHOW_PLOTS,
     )

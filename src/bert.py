@@ -697,20 +697,24 @@ def plot_tsne_embeddings(
 def run_bert_classifier(
     *,
     dataset_path: Path,
-    output_dir: Path,
     config: BertConfig | None = None,
     results_dir: Path,
     show_plots: bool = False,
 ) -> None:
     """Run the full BERT fine-tuning pipeline on the given dataset.
 
+    If a previously saved model exists in `output_dir`, training is skipped
+    and the model/tokenizer are loaded from disk.
+
     Args:
         dataset_path: Path to the CSV file with at least 'text_' and 'label'.
         config: Optional configuration for BERT training.
-        output_dir: Directory to save model and tokenizer.
-        results_dir: Directory where plots and evaluation artifacts are stored.
+        results_dir: Directory where plots, evaluation artifacts and the model are stored.
         show_plots: Whether to display plots interactively while saving them.
     """
+    bert_results = results_dir / "bert"
+    bert_results.mkdir(parents=True, exist_ok=True)
+
     if config is None:
         config = BertConfig()
 
@@ -721,51 +725,61 @@ def run_bert_classifier(
     df, _ = encode_labels(df_raw)
     train_df, test_df = train_test_split_text(df, seed=SEED)
 
-    tokenizer: BertTokenizer = cast(
-        "BertTokenizer",
-        BertTokenizer.from_pretrained(BERT_MODEL_NAME, do_lower_case=True),
-    )
+    tokenizer: BertTokenizer
+    model: BertForSequenceClassification
+    epoch_stats: list[EpochStats] | None = None
+    model_path = bert_results / "pytorch_model.bin"
+    tokenizer_path = bert_results / "tokenizer_config.json"
+    model_exists = model_path.exists() and tokenizer_path.exists()
 
-    train_dataloader, val_dataloader = create_data_loaders(
-        tokenizer=tokenizer,
-        train_df=train_df,
-        config=config,
-        device=device,
-    )
+    if model_exists:
+        console.rule("[bold]Loading existing BERT model[/bold]")
+        console.print(f"Found saved model at: [italic]{bert_results}[/italic]")
+        tokenizer = cast("BertTokenizer", BertTokenizer.from_pretrained(bert_results))
+        model = BertForSequenceClassification.from_pretrained(bert_results)
+        _ = model.to(device)  # pyright: ignore[reportArgumentType]
+    else:
+        tokenizer = cast(
+            "BertTokenizer",
+            BertTokenizer.from_pretrained(BERT_MODEL_NAME, do_lower_case=True),
+        )
+        train_dataloader, val_dataloader = create_data_loaders(
+            tokenizer=tokenizer,
+            train_df=train_df,
+            config=config,
+            device=device,
+        )
 
-    model = build_model(num_labels=df["label"].nunique(), device=device)
-    optimizer, scheduler = build_optimizer_and_scheduler(
-        model=model,
-        train_dataloader=train_dataloader,
-        config=config,
-    )
+        model = build_model(num_labels=df["label"].nunique(), device=device)
+        optimizer, scheduler = build_optimizer_and_scheduler(
+            model=model,
+            train_dataloader=train_dataloader,
+            config=config,
+        )
 
-    t0 = time.time()
-    epoch_stats = train_model(
-        model=model,
-        train_dataloader=train_dataloader,
-        validation_dataloader=val_dataloader,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        device=device,
-        config=config,
-    )
-    total_time = _format_time(time.time() - t0)
-    console.print(f"Total training time: [bold]{total_time}[/bold]")
+        t0 = time.time()
+        epoch_stats = train_model(
+            model=model,
+            train_dataloader=train_dataloader,
+            validation_dataloader=val_dataloader,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            device=device,
+            config=config,
+        )
+        total_time = _format_time(time.time() - t0)
+        console.print(f"Total training time: [bold]{total_time}[/bold]")
 
-    loss_path = results_dir / "bert" / "loss_curves.png"
-    plot_loss_curves(epoch_stats, save_path=loss_path, show_plot=show_plots)
+        loss_path = bert_results / "loss_curves.png"
+        plot_loss_curves(epoch_stats, save_path=loss_path, show_plot=show_plots)
 
-    # Save model and tokenizer
-    save_dir = output_dir or Path("./bert_model")
-    save_dir.mkdir(parents=True, exist_ok=True)
+        # Save model and tokenizer
+        console.rule("[bold]Saving model[/bold]")
+        console.print(f"Saving model to: [italic]{bert_results}[/italic]")
 
-    console.rule("[bold]Saving model[/bold]")
-    console.print(f"Saving model to: [italic]{save_dir}[/italic]")
-
-    model_to_save = cast("BertForSequenceClassification", model.module) if hasattr(model, "module") else model
-    _ = model_to_save.save_pretrained(save_dir)
-    _ = tokenizer.save_pretrained(save_dir)
+        model_to_save = cast("BertForSequenceClassification", model.module) if hasattr(model, "module") else model
+        _ = model_to_save.save_pretrained(bert_results)
+        _ = tokenizer.save_pretrained(bert_results)
 
     # Evaluate on test set
     evaluate_on_test(
@@ -791,7 +805,7 @@ def run_bert_classifier(
         dataloader=prediction_dataloader,
         device=device,
     )
-    tsne_path = results_dir / "bert" / "tsne.png"
+    tsne_path = bert_results / "tsne.png"
     plot_tsne_embeddings(
         embeddings,
         np.asarray(test_df["label"].values),
