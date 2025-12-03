@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import gensim
 import matplotlib.pyplot as plt
@@ -278,6 +278,9 @@ def evaluate_classifier(
     results_dir: Path,
     feature_names: list[str] | None = None,
     show_plots: bool = False,
+    split: Literal["test", "train"] = "test",
+    plot_curves: bool = True,
+    plot_feature_importances: bool = True,
 ) -> dict[str, float]:
     """Pretty-print evaluation metrics for a classifier, save plots, and return scores.
 
@@ -286,24 +289,22 @@ def evaluate_classifier(
         model: Fitted classifier to evaluate.
         x_test: Test feature matrix.
         y_test: True labels for the test set.
-        results_dir: Directory where evaluation artifacts are stored.
+        results_dir: Base directory where evaluation artifacts are stored.
         feature_names: Optional list of feature names for importance plots.
         show_plots: Whether to display the plots interactively.
+        split: Name of the split being evaluated (e.g., ``train`` or ``test``).
+        plot_curves: Whether to plot ROC/PR curves.
+        plot_feature_importances: Whether to plot feature importances (if available).
 
     Returns:
         Dictionary with accuracy, precision, recall, and F1 scores.
     """
+    split_dir = results_dir / split
+    split_dir.mkdir(parents=True, exist_ok=True)
     y_pred = model.predict(x_test)
-
-    # Store predictions for statistical testing
-    results_dir.mkdir(parents=True, exist_ok=True)
-    np.save(results_dir / "y_true.npy", y_test.to_numpy())
-    np.save(results_dir / "y_pred.npy", y_pred)
-
-    # If model supports probabilities, save those too
+    y_proba: np.ndarray | None = None
     if hasattr(model, "predict_proba"):
-        y_proba = model.predict_proba(x_test)
-        np.save(results_dir / "y_proba.npy", y_proba)
+        y_proba = cast("np.ndarray", model.predict_proba(x_test))
 
     acc = accuracy_score(y_test, y_pred)
     precision, recall, fscore, _ = score(y_test, y_pred, average="micro")
@@ -312,16 +313,18 @@ def evaluate_classifier(
         name=name,
         y_true=y_test,
         y_pred=y_pred,
+        y_proba=y_proba,
         console=console,
-        results_dir=results_dir,
+        results_dir=split_dir,
         show_plots=show_plots,
     )
 
-    scores = _get_binary_scores(model, x_test)
-    _plot_roc_pr_curves(name, y_test, scores, results_dir, show_plots)
+    if plot_curves:
+        scores = _get_binary_scores(model, x_test)
+        _plot_roc_pr_curves(name, y_test, scores, split_dir, show_plots)
 
-    if feature_names is not None:
-        _plot_feature_importances(name, model, feature_names, results_dir, show_plots)
+    if feature_names is not None and plot_feature_importances:
+        _plot_feature_importances(name, model, feature_names, split_dir, show_plots)
 
     return {
         "accuracy": float(acc),
@@ -410,6 +413,16 @@ def train_and_evaluate_models(
         console.print(f"Best params: {rf_grid.best_params_}")
         model_results_dir = results_dir / "random_forest"
         _ = evaluate_classifier(
+            "RandomForest (train)",
+            rf_grid.best_estimator_,
+            x_train,
+            y_train,
+            model_results_dir,
+            feature_names,
+            show_plots=show_plots,
+            split="train",
+        )
+        _ = evaluate_classifier(
             "RandomForest",
             rf_grid.best_estimator_,
             x_test,
@@ -451,6 +464,16 @@ def train_and_evaluate_models(
         console.print(f"Best CV score: [bold]{ada_grid.best_score_:.4f}[/bold]")
         console.print(f"Best params: {ada_grid.best_params_}")
         model_results_dir = results_dir / "adaboost"
+        _ = evaluate_classifier(
+            "AdaBoost (train)",
+            ada_grid.best_estimator_,
+            x_train,
+            y_train,
+            model_results_dir,
+            feature_names,
+            show_plots=show_plots,
+            split="train",
+        )
         _ = evaluate_classifier(
             "AdaBoost",
             ada_grid.best_estimator_,
@@ -505,7 +528,17 @@ def train_and_evaluate_models(
         console.print(f"Best params: {xgb_grid.best_params_}")
         model_results_dir = results_dir / "xgboost"
         _ = evaluate_classifier(
-            "XGBoost",
+            "XGBoost (train)",
+            xgb_grid.best_estimator_,
+            x_train,
+            y_train,
+            model_results_dir,
+            feature_names,
+            show_plots=show_plots,
+            split="train",
+        )
+        _ = evaluate_classifier(
+            "XGBoost (test)",
             xgb_grid.best_estimator_,
             x_test,
             y_test,
@@ -547,7 +580,17 @@ def train_and_evaluate_models(
         console.print(f"Best params: {svc_grid.best_params_}")
         model_results_dir = results_dir / "svm"
         _ = evaluate_classifier(
-            "SVM",
+            "SVM (train)",
+            svc_grid.best_estimator_,
+            x_train,
+            y_train,
+            model_results_dir,
+            feature_names,
+            show_plots=show_plots,
+            split="train",
+        )
+        _ = evaluate_classifier(
+            "SVM (test)",
             svc_grid.best_estimator_,
             x_test,
             y_test,
@@ -572,7 +615,17 @@ def train_and_evaluate_models(
 
     nb_results_dir = results_dir / "multinomial_nb"
     _ = evaluate_classifier(
-        "MultinomialNB",
+        "MultinomialNB (train)",
+        nb_model,
+        x_train_scaled,
+        y_train,
+        nb_results_dir,
+        feature_names,
+        show_plots=show_plots,
+        split="train",
+    )
+    _ = evaluate_classifier(
+        "MultinomialNB (test)",
         nb_model,
         x_test_scaled,
         y_test,
@@ -613,7 +666,17 @@ def train_and_evaluate_models(
         console.print(f"Best params: {lr_grid.best_params_}")
         model_results_dir = results_dir / "logistic_regression"
         _ = evaluate_classifier(
-            "LogisticRegression",
+            "LogisticRegression (train)",
+            lr_grid.best_estimator_,
+            x_train,
+            y_train,
+            model_results_dir,
+            feature_names,
+            show_plots=show_plots,
+            split="train",
+        )
+        _ = evaluate_classifier(
+            "LogisticRegression (test)",
             lr_grid.best_estimator_,
             x_test,
             y_test,

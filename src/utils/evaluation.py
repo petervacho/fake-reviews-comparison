@@ -77,6 +77,21 @@ def plot_confusion_matrix(
     )
 
 
+def _save_predictions(
+    *,
+    results_dir: Path,
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    y_proba: np.ndarray | None = None,
+) -> None:
+    """Persist true labels, predictions, and probabilities for later analysis."""
+    results_dir.mkdir(parents=True, exist_ok=True)
+    np.save(results_dir / "y_true.npy", y_true)
+    np.save(results_dir / "y_pred.npy", y_pred)
+    if y_proba is not None:
+        np.save(results_dir / "y_proba.npy", y_proba)
+
+
 def render_evaluation_report(
     *,
     name: str,
@@ -86,6 +101,7 @@ def render_evaluation_report(
     labels: Sequence[str | int] | None = None,
     results_dir: Path,
     show_plots: bool = False,
+    y_proba: np.ndarray | Iterable[float] | None = None,
 ) -> None:
     """Render evaluation metrics, textual reports, and confusion matrix plots.
 
@@ -96,10 +112,10 @@ def render_evaluation_report(
         - Confusion matrix plot
     """
     results_dir.mkdir(parents=True, exist_ok=True)
-    safe_name = name.replace(" ", "_").lower()
 
     y_true_arr = np.asarray(list(y_true))
     y_pred_arr = np.asarray(list(y_pred))
+    y_proba_arr = np.asarray(list(y_proba)) if y_proba is not None else None
 
     # Determine label ordering
     raw_labels = np.asarray(labels) if labels is not None else np.unique(np.concatenate((y_true_arr, y_pred_arr)))
@@ -193,12 +209,20 @@ def render_evaluation_report(
     console.print(class_table)
 
     # Save textual artifacts
-    _ = (results_dir / f"{safe_name}_classification_report.txt").write_text(report_text)
-    _ = (results_dir / f"{safe_name}_metrics.json").write_text(json.dumps(metrics_json, indent=2))
-    _ = (results_dir / f"{safe_name}_per_class_metrics.json").write_text(json.dumps(report_dict, indent=2))
+    _ = (results_dir / "classification_report.txt").write_text(report_text)
+    _ = (results_dir / "metrics.json").write_text(json.dumps(metrics_json, indent=2))
+    _ = (results_dir / "per_class_metrics.json").write_text(json.dumps(report_dict, indent=2))
+
+    # Persist predictions for downstream analysis/testing
+    _save_predictions(
+        results_dir=results_dir,
+        y_true=y_true_arr,
+        y_pred=y_pred_arr,
+        y_proba=y_proba_arr,
+    )
 
     # Confusion matrix plot
-    cm_path = results_dir / f"{safe_name}_confusion_matrix.png"
+    cm_path = results_dir / "confusion_matrix.png"
     plot_confusion_matrix(
         name,
         y_true_arr,

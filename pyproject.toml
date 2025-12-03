@@ -52,6 +52,9 @@ lint = ["basedpyright>=1.31.1", "pre-commit>=4.3.0", "ruff>=0.12.7"]
 pythonPlatform = "All"
 pythonVersion = "3.13"
 typeCheckingMode = "all"
+venvPath = "."
+venv = ".venv"
+useLibraryCodeForTypes = true
 
 # Diagnostic behavior settings
 strictListInference = false

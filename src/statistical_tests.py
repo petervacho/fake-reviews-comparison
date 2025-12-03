@@ -70,16 +70,18 @@ def load_model_results(results_base_dir: Path) -> dict[str, ModelResults]:
             console.print(f"[yellow]Warning: {model_name} directory not found, skipping[/yellow]")
             continue
 
-        # Handle feed_forward specific filenames
-        pred_path = model_dir / "y_pred.npy"
+        test_dir = model_dir / "test"
+        base_dir = test_dir if test_dir.exists() else model_dir
+
+        pred_path = base_dir / "y_pred.npy"
         if not pred_path.exists():
             console.print(f"[yellow]Warning: No predictions found for {model_name}[/yellow]")
             continue
 
         y_pred = np.load(pred_path)
-        y_true = np.load(model_dir / "y_true.npy")
+        y_true = np.load(base_dir / "y_true.npy")
 
-        metrics_path = model_dir / f"{model_name.lower()}_metrics.json"
+        metrics_path = base_dir / "metrics.json"
         if metrics_path.exists():
             with metrics_path.open() as f:
                 metrics = json.load(f)
@@ -87,7 +89,7 @@ def load_model_results(results_base_dir: Path) -> dict[str, ModelResults]:
         else:
             accuracy = float(accuracy_score_fn(y_true, y_pred))
 
-        proba_path = model_dir / "y_proba.npy"
+        proba_path = base_dir / "y_proba.npy"
         y_proba = np.load(proba_path) if proba_path.exists() else None
 
         results[model_name] = ModelResults(
@@ -96,7 +98,7 @@ def load_model_results(results_base_dir: Path) -> dict[str, ModelResults]:
             y_true=y_true,
             y_pred=y_pred,
             y_proba=y_proba,
-            path=model_dir,
+            path=base_dir,
         )
 
     console.print(f"[green]Loaded results for {len(results)} models[/green]")

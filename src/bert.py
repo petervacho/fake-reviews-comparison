@@ -532,34 +532,36 @@ def _build_prediction_dataloader(
     )
 
 
-def evaluate_on_test(
+def evaluate_on_split(
     model: BertForSequenceClassification,
     tokenizer: BertTokenizer,
-    test_df: pd.DataFrame,
+    split_df: pd.DataFrame,
     config: BertConfig,
     device: torch.device,
     results_dir: Path,
+    split_name: str,
     show_plots: bool = False,
 ) -> None:
-    """Evaluate the fine-tuned model on the held-out test set and log artifacts.
+    """Evaluate the fine-tuned model on a given split and log artifacts.
 
     Args:
         model: Trained BERT classifier.
         tokenizer: Tokenizer used during training.
-        test_df: DataFrame containing ``text_`` and ``label`` columns for testing.
+        split_df: DataFrame containing ``text_`` and ``label`` columns for evaluation.
         config: Training/evaluation configuration.
         device: Torch device for running inference.
         results_dir: Directory to store evaluation plots and reports.
+        split_name: Name of the split being evaluated (e.g., ``train`` or ``test``).
         show_plots: Whether to display plots interactively while saving them.
     """
-    console.rule("[bold]Test set evaluation[/bold]")
-    sentences_test = test_df["text_"].astype(str)
-    labels_test = test_df["label"].to_numpy()
+    console.rule(f"[bold]{split_name.capitalize()} set evaluation[/bold]")
+    sentences = split_df["text_"].astype(str)
+    labels = split_df["label"].to_numpy()
 
     prediction_dataloader = _build_prediction_dataloader(
         tokenizer=tokenizer,
-        texts=sentences_test,
-        labels=labels_test,
+        texts=sentences,
+        labels=labels,
         config=config,
         device=device,
     )
@@ -568,7 +570,7 @@ def evaluate_on_test(
     predictions: list[np.ndarray] = []
     true_labels: list[np.ndarray] = []
 
-    console.print(f"Predicting labels for {len(sentences_test):,} test sentences")
+    console.print(f"Predicting labels for {len(sentences):,} {split_name} sentences")
 
     for batch in prediction_dataloader:
         b_ids, b_mask, b_labels = (t.to(device) for t in batch)
@@ -594,21 +596,18 @@ def evaluate_on_test(
 
     bert_results = results_dir / "bert"
     bert_results.mkdir(parents=True, exist_ok=True)
+    bert_split_dir = bert_results / split_name
 
     # Convert logits to probabilities via softmax
     probs: np.ndarray = softmax_fn(pred_np, axis=1)
 
-    # Save predictions and true labels for statistical testing
-    np.save(bert_results / "y_true.npy", true_np)
-    np.save(bert_results / "y_pred.npy", predicted)
-    np.save(bert_results / "y_proba.npy", probs)
-
     render_evaluation_report(
-        name="BERT",
+        name=f"BERT ({split_name})",
         y_true=true_np,
         y_pred=predicted,
+        y_proba=probs,
         console=console,
-        results_dir=bert_results,
+        results_dir=bert_split_dir,
         show_plots=show_plots,
     )
 
@@ -622,7 +621,7 @@ def evaluate_on_test(
     fig.tight_layout()
     finalize_plot(
         fig=fig,
-        save_path=bert_results / "logits_norm_distribution.png",
+        save_path=bert_split_dir / "logits_norm_distribution.png",
         show=show_plots,
         status_msg="Showing BERT logits norm distribution",
     )
@@ -795,14 +794,25 @@ def run_bert_classifier(
         _ = model_to_save.save_pretrained(bert_results)
         _ = tokenizer.save_pretrained(bert_results)
 
-    # Evaluate on test set
-    evaluate_on_test(
+    # Evaluate on train and test sets
+    evaluate_on_split(
         model=model,
         tokenizer=tokenizer,
-        test_df=test_df,
+        split_df=train_df,
         config=config,
         device=device,
         results_dir=results_dir,
+        split_name="train",
+        show_plots=show_plots,
+    )
+    evaluate_on_split(
+        model=model,
+        tokenizer=tokenizer,
+        split_df=test_df,
+        config=config,
+        device=device,
+        results_dir=results_dir,
+        split_name="test",
         show_plots=show_plots,
     )
 
