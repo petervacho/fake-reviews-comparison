@@ -13,7 +13,8 @@ from rich.table import Table
 from torch import Tensor, nn, optim
 
 from src.ml_models import prepare_modeling_frame
-from src.utils import render_evaluation_report, rolling_status
+from src.utils.evaluation import render_evaluation_report
+from src.utils.rich import rolling_status
 
 SEED = 0
 INPUT_DIM = 56

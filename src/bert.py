@@ -28,7 +28,8 @@ from transformers import (
     get_linear_schedule_with_warmup as _get_linear_schedule_with_warmup,  # type: ignore[reportUnknownVariableType]
 )
 
-from src.utils import finalize_plot, render_evaluation_report, rolling_status
+from src.utils.evaluation import finalize_plot, render_evaluation_report
+from src.utils.rich import rolling_status
 
 SEED = 0
 BERT_MODEL_NAME = "bert-base-uncased"

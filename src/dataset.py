@@ -26,7 +26,7 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from textblob import TextBlob
 
-from src.utils import finalize_plot
+from src.utils.evaluation import finalize_plot
 
 console = Console()
 

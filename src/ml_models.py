@@ -23,7 +23,8 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler
 from sklearn.svm import SVC
 
-from src.utils import finalize_plot, render_evaluation_report, rolling_status
+from src.utils.evaluation import finalize_plot, render_evaluation_report
+from src.utils.rich import rolling_status
 
 accuracy_score = cast("Any", sk_metrics.accuracy_score)
 auc = cast("Any", sk_metrics.auc)
