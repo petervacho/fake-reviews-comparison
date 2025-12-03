@@ -44,6 +44,7 @@ class ModelResults:
 
     name: str
     accuracy: float
+    metrics: dict[str, float]
     y_true: np.ndarray
     y_pred: np.ndarray
     y_proba: np.ndarray | None = None
@@ -82,12 +83,20 @@ def load_model_results(results_base_dir: Path) -> dict[str, ModelResults]:
         y_true = np.load(base_dir / "y_true.npy")
 
         metrics_path = base_dir / "metrics.json"
+        metrics: dict[str, float] = {}
         if metrics_path.exists():
             with metrics_path.open() as f:
-                metrics = json.load(f)
+                raw_metrics = json.load(f)
+            metrics = {}
+            for key, value in raw_metrics.items():
+                try:
+                    metrics[key] = float(value)
+                except (TypeError, ValueError):
+                    continue
             accuracy = float(metrics.get("accuracy", accuracy_score_fn(y_true, y_pred)))
         else:
             accuracy = float(accuracy_score_fn(y_true, y_pred))
+        _ = metrics.setdefault("accuracy", accuracy)
 
         proba_path = base_dir / "y_proba.npy"
         y_proba = np.load(proba_path) if proba_path.exists() else None
@@ -95,6 +104,7 @@ def load_model_results(results_base_dir: Path) -> dict[str, ModelResults]:
         results[model_name] = ModelResults(
             name=model_name,
             accuracy=accuracy,
+            metrics=metrics,
             y_true=y_true,
             y_pred=y_pred,
             y_proba=y_proba,
@@ -410,6 +420,81 @@ def plot_statistical_comparisons(
     )
 
 
+def plot_model_overview(
+    model_results: dict[str, ModelResults],
+    results_dir: Path,
+    show_plots: bool = False,
+) -> None:
+    """Visualize headline metrics for all available models."""
+    if not model_results:
+        console.print("[yellow]No model results to summarize.[/yellow]")
+        return
+
+    rows: list[dict[str, float | str | int]] = []
+    for name, res in model_results.items():
+        metrics = res.metrics
+        rows.append(
+            {
+                "model": name,
+                "accuracy": float(metrics.get("accuracy", res.accuracy)),
+                "precision": float(metrics["precision"]) if "precision" in metrics else np.nan,
+                "recall": float(metrics["recall"]) if "recall" in metrics else np.nan,
+                "f1": float(metrics["f1"]) if "f1" in metrics else np.nan,
+                "n_samples": len(res.y_true),
+            },
+        )
+
+    df = pd.DataFrame(rows).sort_values("accuracy", ascending=False)
+    metric_cols = [c for c in ("accuracy", "precision", "recall", "f1") if c in df.columns and not df[c].isna().all()]
+
+    if df.empty:
+        console.print("[yellow]No metrics found to plot.[/yellow]")
+        return
+
+    n_axes = 2 if len(metric_cols) > 1 else 1
+    fig, axes = plt.subplots(1, n_axes, figsize=(10 + 5 * (n_axes - 1), 7))
+    axes_arr = np.atleast_1d(axes)
+
+    # Accuracy leaderboard
+    ax0 = axes_arr[0]
+    _ = sns.barplot(data=df, x="accuracy", y="model", hue="model", palette="crest", ax=ax0, legend=False)
+    ax0.set_xlim(0, 1)
+    ax0.set_xlabel("Accuracy")
+    ax0.set_ylabel("Model")
+    ax0.set_title("Test accuracy by model")
+    for patch in ax0.patches:
+        width = patch.get_width()
+        ax0.text(width + 0.01, patch.get_y() + patch.get_height() / 2, f"{width:.3f}", va="center")
+    ax0.grid(axis="x", alpha=0.3, linestyle="--")
+
+    # Additional metrics (precision/recall/F1) if available
+    if n_axes > 1:
+        other_metrics = [m for m in metric_cols if m != "accuracy"]
+        metric_df = df.melt(id_vars="model", value_vars=other_metrics, var_name="metric", value_name="value")
+        metric_df["metric"] = metric_df["metric"].str.upper()
+
+        ax1 = axes_arr[1]
+        _ = sns.barplot(data=metric_df, x="value", y="metric", hue="model", ax=ax1)
+        ax1.set_xlim(0, 1)
+        ax1.set_xlabel("Score")
+        ax1.set_ylabel("")
+        ax1.set_title("Precision / Recall / F1 (test)")
+        ax1.legend(title="Model", bbox_to_anchor=(1.04, 1), loc="upper left")
+        _ = ax1.grid(axis="x", alpha=0.3, linestyle="--")
+
+    _ = fig.suptitle("Model performance overview", fontsize=14)
+    plt.tight_layout()
+
+    overview_dir = results_dir / "statistical_tests"
+    overview_dir.mkdir(parents=True, exist_ok=True)
+    finalize_plot(
+        fig=fig,
+        save_path=overview_dir / "model_overview.png",
+        show=show_plots,
+        status_msg="Showing model overview plot",
+    )
+
+
 def generate_statistical_report(
     model_results: dict[str, ModelResults],
     results_dir: Path,
@@ -554,6 +639,13 @@ def run_statistical_tests(
 
     # Load model results
     model_results = load_model_results(results_dir)
+    if not model_results:
+        console.print("[red]No model results found; nothing to analyze.[/red]")
+        return
+
+    # High-level comparison plot across all available models
+    plot_model_overview(model_results, results_dir, show_plots=show_plots)
+
     if len(model_results) < 2:
         console.print("[red]Need at least 2 models for statistical comparison[/red]")
         return
