@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import builtins
 import json
+import signal
 import sys
 import threading
 import time
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
+from types import FrameType
 from typing import Any, cast
 from warnings import warn
 
@@ -192,8 +194,9 @@ def rolling_status(
         add_elapsed_time:
             If true, append the formatted elapsed time to the title on every update.
 
-            This will also enable starting up a thread that triggers re-rendering of the
-            live rich view to make the timer update seamlessly (not just on new prints).
+            When enabled, a periodic timer drives automatic refreshes so the elapsed
+            time updates smoothly even while the main thread is busy and regardless
+            of whether any new lines are printed (using signals).
 
 
     Yields:
@@ -247,7 +250,6 @@ def rolling_status(
         live.update(spin if not final else spin.text)
 
     stop_event = threading.Event()
-    ticker_thread: threading.Thread | None = None
 
     with Live("", console=console, refresh_per_second=20) as live:
         original_print = builtins.print
@@ -256,20 +258,21 @@ def rolling_status(
         try:
             if add_elapsed_time:
 
-                def ticker() -> None:
-                    while not stop_event.is_set():
-                        update()
-                        time.sleep(0.2)
+                def handler(_signum: int, _frame: FrameType | None) -> Any:
+                    update()
+                    if stop_event.is_set():
+                        _ = signal.setitimer(signal.ITIMER_REAL, 0)
+                        _ = signal.signal(signal.SIGALRM, signal.SIG_DFL)
 
-                ticker_thread = threading.Thread(target=ticker, daemon=True)
-                ticker_thread.start()
+                _ = signal.signal(signal.SIGALRM, handler)
+                _ = signal.setitimer(signal.ITIMER_REAL, 0.2, 0.2)  # 0.2s interval, repeat
 
             update()
             yield
         finally:
             stop_event.set()
-            if ticker_thread is not None:
-                ticker_thread.join(timeout=0.5)
+            _ = signal.setitimer(signal.ITIMER_REAL, 0)
+            _ = signal.signal(signal.SIGALRM, signal.SIG_DFL)
 
             builtins.print = original_print
 
