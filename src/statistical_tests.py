@@ -652,9 +652,13 @@ def run_statistical_tests(
 
     test_sets_consistent = verify_consistent_test_sets(model_results)
     if not test_sets_consistent:
-        console.print("[yellow]WARNING: Models were not evaluated on identical test sets.")
-        console.print("  Statistical comparisons may be invalid.")
-        console.print("  Continuing anyway, but interpret results with caution.[/yellow]")
+        console.print(
+            "[yellow]"
+            "WARNING: Models were not evaluated on identical test sets.\n"
+            "  Statistical comparisons may be invalid.\n"
+            "  Continuing anyway, but interpret results with caution."
+            "[/yellow]",
+        )
 
     # Generate comprehensive report
     generate_statistical_report(model_results, results_dir, alpha=0.05, show_plots=show_plots)
