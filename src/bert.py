@@ -29,6 +29,7 @@ from transformers import (
     get_linear_schedule_with_warmup as _get_linear_schedule_with_warmup,  # type: ignore[reportUnknownVariableType]
 )
 
+from src.schema import LABEL_COLUMN, TEXT_COLUMN
 from src.utils.evaluation import finalize_plot, render_evaluation_report
 from src.utils.rich import rolling_status
 
@@ -132,7 +133,7 @@ def load_dataset(dataset_path: Path) -> pd.DataFrame:
 
 
 def encode_labels(df: pd.DataFrame) -> tuple[pd.DataFrame, LabelEncoder]:
-    """Encode the 'label' column to integers.
+    """Encode the label column to integers.
 
     Args:
         df: Input DataFrame containing a 'label' column.
@@ -140,14 +141,14 @@ def encode_labels(df: pd.DataFrame) -> tuple[pd.DataFrame, LabelEncoder]:
     Returns:
         Tuple of (new DataFrame with encoded labels, fitted LabelEncoder).
     """
-    if "label" not in df.columns:
-        msg = "Dataset must contain a 'label' column"
+    if LABEL_COLUMN not in df.columns:
+        msg = f"Dataset must contain a '{LABEL_COLUMN}' column"
         raise ValueError(msg)
 
     console.print("Encoding [bold]label[/bold] column")
     label_encoder = LabelEncoder()
     df_copy = df.copy()
-    df_copy["label"] = label_encoder.fit_transform(df_copy["label"])
+    df_copy[LABEL_COLUMN] = label_encoder.fit_transform(df_copy[LABEL_COLUMN])
     return df_copy, label_encoder
 
 
@@ -166,8 +167,8 @@ def train_test_split_text(
     Returns:
         (train_df, test_df) dataframes.
     """
-    if "text_" not in df.columns:
-        msg = "Dataset must contain a 'text_' column"
+    if TEXT_COLUMN not in df.columns:
+        msg = f"Dataset must contain a '{TEXT_COLUMN}' column"
         raise ValueError(msg)
 
     console.rule("[bold]Train/test split[/bold]")
@@ -229,8 +230,8 @@ def create_data_loaders(
         Tuple of (train_dataloader, validation_dataloader).
     """
     console.rule("[bold]Preparing tensors[/bold]")
-    sentences = train_df["text_"]
-    labels = train_df["label"].to_numpy()
+    sentences = train_df[TEXT_COLUMN]
+    labels = train_df[LABEL_COLUMN].to_numpy()
 
     input_ids, attention_masks = tokenize_texts(
         tokenizer=tokenizer,
@@ -555,8 +556,8 @@ def evaluate_on_split(
         show_plots: Whether to display plots interactively while saving them.
     """
     console.rule(f"[bold]{split_name.capitalize()} set evaluation[/bold]")
-    sentences = split_df["text_"].astype(str)
-    labels = split_df["label"].to_numpy()
+    sentences = split_df[TEXT_COLUMN].astype(str)
+    labels = split_df[LABEL_COLUMN].to_numpy()
 
     prediction_dataloader = _build_prediction_dataloader(
         tokenizer=tokenizer,
@@ -763,7 +764,7 @@ def run_bert_classifier(
             device=device,
         )
 
-        model = build_model(num_labels=df["label"].nunique(), device=device)
+        model = build_model(num_labels=df[LABEL_COLUMN].nunique(), device=device)
         optimizer, scheduler = build_optimizer_and_scheduler(
             model=model,
             train_dataloader=train_dataloader,
@@ -819,8 +820,8 @@ def run_bert_classifier(
     console.print("Computing BERT embeddings for t-SNE")
     prediction_dataloader = _build_prediction_dataloader(
         tokenizer=tokenizer,
-        texts=test_df["text_"].astype(str),
-        labels=test_df["label"].to_numpy(),
+        texts=test_df[TEXT_COLUMN].astype(str),
+        labels=test_df[LABEL_COLUMN].to_numpy(),
         config=config,
         device=device,
     )
@@ -832,7 +833,7 @@ def run_bert_classifier(
     tsne_path = bert_results / "tsne.png"
     plot_tsne_embeddings(
         embeddings,
-        np.asarray(test_df["label"].values),
+        np.asarray(test_df[LABEL_COLUMN].values),
         save_path=tsne_path,
         show_plot=show_plots,
     )

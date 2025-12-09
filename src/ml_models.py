@@ -20,10 +20,12 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.manifold import TSNE
 from sklearn.model_selection import GridSearchCV
 from sklearn.naive_bayes import MultinomialNB
-from sklearn.preprocessing import LabelEncoder, MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler
 from sklearn.svm import SVC
 
+from src.schema import LABEL_COLUMN, TEXT_COLUMN
 from src.utils.evaluation import finalize_plot, render_evaluation_report
+from src.utils.modeling import prepare_modeling_frame
 from src.utils.rich import rolling_status
 
 accuracy_score = cast("Any", sk_metrics.accuracy_score)
@@ -74,7 +76,7 @@ def plot_tsne_embeddings(
     df = pd.concat([df, labels_subset.reset_index(drop=True)], axis=1)
 
     with console.status("Rendering t-SNE plot"):
-        grid = sns.FacetGrid(df, hue="label", height=6).map(plt.scatter, "dim1", "dim2").add_legend()
+        grid = sns.FacetGrid(df, hue=LABEL_COLUMN, height=6).map(plt.scatter, "dim1", "dim2").add_legend()
         title_suffix = "Cleaned" if cleaned else "Raw"
         _ = plt.title(f"t-SNE on {title_suffix} Texts (Perplexity = 20)")
         finalize_plot(
@@ -124,59 +126,6 @@ def build_word2vec_embeddings(sentences: Sequence[Sequence[str]]) -> list[np.nda
     return sentence_vectors
 
 
-# ---------------------------------------------------------------------------
-# Modeling frame
-# ---------------------------------------------------------------------------
-def prepare_modeling_frame(final_df: pd.DataFrame) -> pd.DataFrame:
-    """Prepare final modeling frame from the fully preprocessed + PCA dataset.
-
-    Args:
-        final_df: DataFrame after feature engineering and PCA.
-
-    Returns:
-        Modeling DataFrame including encoded label and one-hot categoricals.
-    """
-    console.rule("[bold]Preparing modeling frame[/bold]")
-
-    df = final_df.copy()
-
-    # Encode label
-    console.print("Encoding label column")
-    label_encoder = LabelEncoder()
-    df["label"] = label_encoder.fit_transform(df["label"])
-
-    # One-hot encode remaining categoricals
-    console.print("One-hot encoding categorical features: [italic]category, sentiment, semantic_relevance[/italic]")
-    cat_df = df[["category", "sentiment", "semantic_relevance"]]
-    ohe = pd.get_dummies(cat_df, prefix=["category", "sentiment", "semantic_relevance"])
-
-    # PCA components only
-    console.print("Selecting numeric PCA component columns (PC1, PC2, ...)")
-    pca_cols = df.filter(regex=r"^PC\d+$").copy()
-    pca_cols = pca_cols.apply(pd.to_numeric, errors="coerce")
-    pca_cols = pca_cols.fillna(pca_cols.mean())
-
-    model_df = pd.concat(
-        [
-            ohe.reset_index(drop=True),
-            pca_cols.reset_index(drop=True),
-            df[["label"]].reset_index(drop=True),
-        ],
-        axis=1,
-    )
-
-    console.print(
-        Panel.fit(
-            f"Modeling frame prepared\nRows: {model_df.shape[0]}  Columns: {model_df.shape[1]}",
-            title="Modeling frame",
-        ),
-    )
-    return model_df
-
-
-# ---------------------------------------------------------------------------
-# Evaluation
-# ---------------------------------------------------------------------------
 def _get_binary_scores(model: Any, x: np.ndarray | pd.DataFrame) -> np.ndarray | None:
     """Return probability/decision scores for binary metrics, if available."""
     if hasattr(model, "predict_proba"):
@@ -364,10 +313,10 @@ def train_and_evaluate_models(
     train_df = df_with_pca.sample(frac=0.8, random_state=SEED)
     test_df = df_with_pca.drop(train_df.index)
 
-    x_train = train_df.drop(columns=["label"])
-    y_train = train_df["label"]
-    x_test = test_df.drop(columns=["label"])
-    y_test = test_df["label"]
+    x_train = train_df.drop(columns=[LABEL_COLUMN])
+    y_train = train_df[LABEL_COLUMN]
+    x_test = test_df.drop(columns=[LABEL_COLUMN])
+    y_test = test_df[LABEL_COLUMN]
     feature_names = x_train.columns.tolist()
 
     _print_split_info(x_train, y_train)
@@ -710,23 +659,24 @@ def run_ml_models(
     console.print(Panel.fit(f"Rows: {df.shape[0]}  Columns: {df.shape[1]}", title="Raw dataset"))
 
     tsne_path = results_dir / "tsne.png"
-    plot_tsne_embeddings(
-        texts=df["CleanedText"].astype(str),
-        labels=df["label"],
-        cleaned=True,
-        save_path=tsne_path,
-        show_plot=show_plots,
-    )
+    if TEXT_COLUMN in df.columns:
+        plot_tsne_embeddings(
+            texts=df[TEXT_COLUMN].astype(str),
+            labels=df[LABEL_COLUMN],
+            cleaned=False,
+            save_path=tsne_path,
+            show_plot=show_plots,
+        )
 
     # Optional: Word2Vec sentence embeddings (not used in modeling below)
-    if perform_word2vec:
-        tokenized_sentences = [str(text).split() for text in df["CleanedText"]]
+    if perform_word2vec and TEXT_COLUMN in df.columns:
+        tokenized_sentences = [str(text).split() for text in df[TEXT_COLUMN]]
         _ = build_word2vec_embeddings(tokenized_sentences)
 
-    model_df = prepare_modeling_frame(df)
+    model_df: pd.DataFrame = prepare_modeling_frame(df, console=console)
 
     console.rule("[bold]Label distribution[/bold]")
-    label_counts = model_df["label"].value_counts().sort_index()
+    label_counts: pd.Series = model_df[LABEL_COLUMN].value_counts().sort_index()
     label_table = Table(show_header=True, header_style="bold")
     label_table.add_column("Label")
     label_table.add_column("Count", justify="right")

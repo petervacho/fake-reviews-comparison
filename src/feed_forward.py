@@ -12,12 +12,12 @@ from rich.panel import Panel
 from rich.table import Table
 from torch import Tensor, nn, optim
 
-from src.ml_models import prepare_modeling_frame
+from src.schema import LABEL_COLUMN
 from src.utils.evaluation import render_evaluation_report
+from src.utils.modeling import prepare_modeling_frame
 from src.utils.rich import rolling_status
 
 SEED = 0
-INPUT_DIM = 56
 
 console = Console()
 
@@ -50,11 +50,11 @@ def select_device() -> torch.device:
 # Model definition
 # ---------------------------------------------------------------------------
 class FeedForwardModel(nn.Module):
-    """Feed-forward neural network with a fixed 56-dimensional input."""
+    """Feed-forward neural network for binary classification."""
 
-    def __init__(self) -> None:
+    def __init__(self, input_dim: int) -> None:
         super().__init__()
-        self.linear1 = nn.Linear(INPUT_DIM, 48)
+        self.linear1 = nn.Linear(input_dim, 48)
         self.linear2 = nn.Linear(48, 42)
         self.linear3 = nn.Linear(42, 36)
         self.linear4 = nn.Linear(36, 28)
@@ -97,10 +97,10 @@ def _train_test_split(df_with_pca: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataF
     train_df = df_with_pca.sample(frac=0.8, random_state=SEED)
     test_df = df_with_pca.drop(train_df.index)
 
-    x_train = train_df.drop(columns=["label"])
-    y_train = train_df["label"]
-    x_test = test_df.drop(columns=["label"])
-    y_test = test_df["label"]
+    x_train = train_df.drop(columns=[LABEL_COLUMN])
+    y_train = train_df[LABEL_COLUMN]
+    x_test = test_df.drop(columns=[LABEL_COLUMN])
+    y_test = test_df[LABEL_COLUMN]
 
     _print_split_info(x_train, y_train)
     return x_train, x_test, y_train, y_test
@@ -211,6 +211,8 @@ def train_feed_forward(
     # Ensure numeric dtype
     x_train = x_train.astype(float)
     x_test = x_test.astype(float)
+    input_dim = x_train.shape[1]
+    console.print(f"Detected input dimension: [bold]{input_dim}[/bold]")
 
     # Convert to tensors
     x_train_tensor = torch.tensor(x_train.values, dtype=torch.float32, device=device)
@@ -219,7 +221,7 @@ def train_feed_forward(
     y_test_tensor = torch.tensor(y_test.values, dtype=torch.long, device=device)
 
     # Model and optimizer
-    model = FeedForwardModel().to(device)
+    model = FeedForwardModel(input_dim=input_dim).to(device)
     _print_model_parameters(model)
 
     optimizer = optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -285,7 +287,7 @@ def run_feed_forward(*, dataset_path: Path, results_dir: Path, show_plots: bool 
     console.print(df.sample(n=min(10, len(df))))
 
     # Reuse the same modeling-frame preparation as the classical ML models
-    model_df = prepare_modeling_frame(df)
+    model_df: pd.DataFrame = prepare_modeling_frame(df, console=console)
 
     console.rule("[bold]Feed-forward neural network on PCA-based features[/bold]")
     train_feed_forward(
