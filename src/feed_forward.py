@@ -8,7 +8,6 @@ import numpy as np
 import pandas as pd
 import torch
 from rich.console import Console
-from rich.panel import Panel
 from rich.table import Table
 from torch import Tensor, nn, optim
 
@@ -264,28 +263,19 @@ def train_feed_forward(
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
-def run_feed_forward(*, dataset_path: Path, results_dir: Path, show_plots: bool = False) -> None:
-    """Run the full feed-forward pipeline on the final PCA dataset.
+def run_feed_forward(
+    *,
+    df: pd.DataFrame,
+    results_dir: Path,
+    show_plots: bool = False,
+) -> None:
+    """Run the full feed-forward pipeline on the final PCA dataset without mutating it.
 
     Args:
-        dataset_path: Path to the preprocessed dataset with PCA components and labels.
+        df: Pre-loaded dataframe to use for modeling.
         results_dir: Directory to store evaluation artifacts.
         show_plots: Whether to display plots interactively while saving them.
     """
-    console.rule("[bold]Loading dataset for feed-forward network[/bold]")
-    console.print(f"Reading dataset from: [italic]{dataset_path}[/italic]")
-    df = pd.read_csv(dataset_path)
-
-    console.print(
-        Panel.fit(
-            f"Rows: {df.shape[0]}  Columns: {df.shape[1]}",
-            title="Raw dataset",
-        ),
-    )
-    console.print(f"Number of rows in dataset: [bold]{df.shape[0]:,}[/bold]")
-    console.print("\nRandom sample of 10 rows:")
-    console.print(df.sample(n=min(10, len(df))))
-
     # Reuse the same modeling-frame preparation as the classical ML models
     model_df: pd.DataFrame = prepare_modeling_frame(df, console=console)
 

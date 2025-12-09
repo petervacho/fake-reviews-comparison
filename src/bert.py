@@ -114,24 +114,6 @@ def _format_time(elapsed: float) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Data loading and preparation
-# ---------------------------------------------------------------------------
-def load_dataset(dataset_path: Path) -> pd.DataFrame:
-    """Load the final dataset from CSV."""
-    console.rule("[bold]Loading dataset[/bold]")
-    console.print(f"Reading dataset from: [italic]{dataset_path}[/italic]")
-
-    df = pd.read_csv(dataset_path)
-
-    console.print(
-        Panel.fit(
-            f"Rows: {df.shape[0]}  Columns: {df.shape[1]}",
-            title="Raw dataset",
-        ),
-    )
-    return df
-
-
 def encode_labels(df: pd.DataFrame) -> tuple[pd.DataFrame, LabelEncoder]:
     """Encode the label column to integers.
 
@@ -710,18 +692,18 @@ def plot_tsne_embeddings(
 # ---------------------------------------------------------------------------
 def run_bert_classifier(
     *,
-    dataset_path: Path,
+    df: pd.DataFrame,
     config: BertConfig | None = None,
     results_dir: Path,
     show_plots: bool = False,
 ) -> None:
-    """Run the full BERT fine-tuning pipeline on the given dataset.
+    """Run the full BERT fine-tuning pipeline on the given dataset without mutating it.
 
     If a previously saved model exists in `output_dir`, training is skipped
     and the model/tokenizer are loaded from disk.
 
     Args:
-        dataset_path: Path to the CSV file with at least 'text_' and 'label'.
+        df: Pre-loaded dataframe with at least 'text_' and 'label'.
         config: Optional configuration for BERT training.
         results_dir: Directory where plots, evaluation artifacts and the model are stored.
         show_plots: Whether to display plots interactively while saving them.
@@ -735,9 +717,8 @@ def run_bert_classifier(
     device = get_device()
     set_seed(SEED)
 
-    df_raw = load_dataset(dataset_path)
-    df, _ = encode_labels(df_raw)
-    train_df, test_df = train_test_split_text(df, seed=SEED)
+    encoded_df, _ = encode_labels(df)
+    train_df, test_df = train_test_split_text(encoded_df, seed=SEED)
 
     tokenizer: BertTokenizer
     model: BertForSequenceClassification
@@ -764,7 +745,7 @@ def run_bert_classifier(
             device=device,
         )
 
-        model = build_model(num_labels=df[LABEL_COLUMN].nunique(), device=device)
+        model = build_model(num_labels=encoded_df[LABEL_COLUMN].nunique(), device=device)
         optimizer, scheduler = build_optimizer_and_scheduler(
             model=model,
             train_dataloader=train_dataloader,

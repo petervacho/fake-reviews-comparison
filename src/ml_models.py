@@ -12,7 +12,6 @@ import seaborn as sns
 import sklearn.metrics as sk_metrics
 import xgboost as xgb
 from rich.console import Console
-from rich.panel import Panel
 from rich.table import Table
 from sklearn.ensemble import AdaBoostClassifier, RandomForestClassifier
 from sklearn.feature_extraction.text import CountVectorizer
@@ -639,25 +638,19 @@ def train_and_evaluate_models(
 # ---------------------------------------------------------------------------
 def run_ml_models(
     *,
-    dataset_path: Path,
+    df: pd.DataFrame,
     perform_word2vec: bool = False,
     results_dir: Path,
     show_plots: bool = False,
 ) -> None:
-    """Load the final PCA-processed dataset and run all classical ML models.
+    """Load the final PCA-processed dataset and run all classical ML models without mutating it.
 
     Args:
-        dataset_path: Path to the preprocessed dataset with PCA components and labels.
+        df: Pre-loaded dataframe to use for modeling.
         perform_word2vec: Whether to train Word2Vec embeddings as an optional step.
         results_dir: Directory where plots and reports will be written.
         show_plots: Whether to render plots interactively in addition to saving them.
     """
-    console.rule("[bold]Loading dataset[/bold]")
-    console.print(f"Reading dataset from: [italic]{dataset_path}[/italic]")
-    df = pd.read_csv(dataset_path)
-
-    console.print(Panel.fit(f"Rows: {df.shape[0]}  Columns: {df.shape[1]}", title="Raw dataset"))
-
     tsne_path = results_dir / "tsne.png"
     if TEXT_COLUMN in df.columns:
         plot_tsne_embeddings(
